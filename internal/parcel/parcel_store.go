@@ -3,14 +3,13 @@ package parcel
 import (
 	"database/sql"
 	"fmt"
-	"log"
 )
 
 // Подключение к БД - parcels.db
 func SetupParcelsDB() (*sql.DB, error) {
 	db, err := sql.Open("sqlite", "./internal/parcel/parcels.db")
 	if err != nil {
-		log.Printf("Не удалось подключиться к базе данных parcels: %v", err)
+		fmt.Printf("Не удалось подключиться к базе данных parcels: %v", err)
 		return nil, err
 	}
 
@@ -23,7 +22,7 @@ func SetupParcelsDB() (*sql.DB, error) {
 	);`
 	_, err = db.Exec(createTable)
 	if err != nil {
-		log.Printf("Ошибка при создании таблицы parcel: %v", err)
+		fmt.Printf("Ошибка при создании таблицы parcel: %v", err)
 		return nil, err
 	}
 
