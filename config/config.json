@@ -1,0 +1,9 @@
+{
+    "database": {
+      "dsn": "./internal/db/main.db"
+    },
+    "server": {
+      "host": "localhost",
+      "port": 8080
+    }
+  }

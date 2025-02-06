@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	"delivery/internal/models"
 	"fmt"
 	"time"
 )
@@ -13,75 +14,118 @@ func NewDeliveryService(store *DeliveryStore) *DeliveryService {
 	return &DeliveryService{store: store}
 }
 
-type DeliveryStatus struct {
-	Assigned   string
-	InProgress string
-	Delivered  string
-	Failed     string
-}
-
-var Status = DeliveryStatus{
-	Assigned:   "assigned",
-	InProgress: "in progress",
-	Delivered:  "delivered",
-	Failed:     "failed",
-}
-
-// Назначить доставку курьеру
-func (s *DeliveryService) AssignDelivery(courierID, parcelID int) (Delivery, error) {
-	delivery := Delivery{
-		CourierID:  courierID,
-		ParcelID:   parcelID,
-		Status:     Status.Assigned,
+func (s *DeliveryService) Create(delivery *models.Delivery) error {
+	d := models.Delivery{
+		ParcelID:   delivery.ParcelID,
+		CourierID:  delivery.CourierID,
+		Status:     delivery.Status,
 		AssignedAt: time.Now().UTC(),
 	}
-	id, err := s.store.Add(delivery)
+
+	id, err := s.store.Add(d)
 	if err != nil {
-		return Delivery{}, fmt.Errorf("ошибка при создании доставки: %w", err)
+		return fmt.Errorf("Ошибка при создании доставки: %w", err)
 	}
+
 	delivery.ID = id
-	return delivery, nil
+	delivery.AssignedAt = d.AssignedAt
+	return nil
 }
 
-// Завершить доставку
+func (s *DeliveryService) Get(id int) (*models.Delivery, error) {
+	delivery, err := s.store.Get(id)
+	if err != nil {
+		return nil, fmt.Errorf("Ошибка при получении доставки: %w", err)
+	}
+
+	return &models.Delivery{
+		ID:          delivery.ID,
+		ParcelID:    delivery.ParcelID,
+		CourierID:   delivery.CourierID,
+		Status:      delivery.Status,
+		AssignedAt:  delivery.AssignedAt,
+		DeliveredAt: delivery.DeliveredAt,
+	}, nil
+}
+
+func (s *DeliveryService) Update(id int, delivery *models.Delivery) error {
+	d := models.Delivery{
+		ID:          id,
+		ParcelID:    delivery.ParcelID,
+		CourierID:   delivery.CourierID,
+		Status:      delivery.Status,
+		AssignedAt:  delivery.AssignedAt,
+		DeliveredAt: delivery.DeliveredAt,
+	}
+
+	if err := s.store.Update(d); err != nil {
+		return fmt.Errorf("Ошибка при обновлении доставки: %w", err)
+	}
+	return nil
+}
+
 func (s *DeliveryService) CompleteDelivery(deliveryID int) error {
 	delivery, err := s.store.Get(deliveryID)
 	if err != nil {
 		return fmt.Errorf("Ошибка при получении доставки: %w", err)
 	}
 
-	if delivery.Status != Status.Assigned && delivery.Status != Status.InProgress {
-		return fmt.Errorf("Завершение доставки недоступно для данного статуса: %s", delivery.Status)
+	if delivery.Status != "assigned" && delivery.Status != "in progress" {
+		return fmt.Errorf("Завершение доставки недоступно для статуса: %s", delivery.Status)
 	}
 
-	delivery.Status = Status.Delivered
+	delivery.Status = "delivered"
 	delivery.DeliveredAt = time.Now().UTC()
 
-	err = s.store.Update(delivery)
-	if err != nil {
-		return fmt.Errorf("Ошибка при завершении доставки: %w", err)
-	}
-	return nil
+	return s.store.Update(delivery)
 }
 
-// Получить доставку по идентификатору
-func (s *DeliveryService) GetDelivery(id int) (Delivery, error) {
-	delivery, err := s.store.Get(id)
+func (s *DeliveryService) GetByParcelID(parcelID int) (*models.Delivery, error) {
+	delivery, err := s.store.GetByParcelID(parcelID)
 	if err != nil {
-		return Delivery{}, fmt.Errorf("ошибка при получении доставки: %w", err)
+		return nil, fmt.Errorf("Ошибка при получении доставки по ID посылки: %w", err)
 	}
-	return delivery, nil
+
+	return &models.Delivery{
+		ID:          delivery.ID,
+		ParcelID:    delivery.ParcelID,
+		CourierID:   delivery.CourierID,
+		Status:      delivery.Status,
+		AssignedAt:  delivery.AssignedAt,
+		DeliveredAt: delivery.DeliveredAt,
+	}, nil
 }
 
-// Получить все доставки курьера
-func (s *DeliveryService) GetDeliveriesByCourier(courierID int) ([]Delivery, error) {
+func (s *DeliveryService) GetDeliveriesByCourier(courierID int) ([]models.Delivery, error) {
 	deliveries, err := s.store.GetByCourierID(courierID)
 	if err != nil {
 		return nil, fmt.Errorf("Ошибка при получении доставок курьера: %w", err)
 	}
+
 	return deliveries, nil
 }
 
-func (s *DeliveryService) String() string {
-	return "DeliveryService {работает с доставками}"
+func (s *DeliveryService) Delete(id int) error {
+	err := s.store.Delete(id)
+	if err != nil {
+		return fmt.Errorf("Ошибка при удалении доставки: %w", err)
+	}
+	return nil
+}
+
+func (s *DeliveryService) AssignDelivery(courierID, parcelID int) (models.Delivery, error) {
+	delivery := models.Delivery{
+		CourierID:  courierID,
+		ParcelID:   parcelID,
+		Status:     "assigned",
+		AssignedAt: time.Now().UTC(),
+	}
+
+	id, err := s.store.Add(delivery)
+	if err != nil {
+		return models.Delivery{}, fmt.Errorf("Ошибка при создании доставки: %w", err)
+	}
+
+	delivery.ID = id
+	return delivery, nil
 }

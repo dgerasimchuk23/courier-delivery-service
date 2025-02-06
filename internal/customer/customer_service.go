@@ -1,5 +1,10 @@
 package customer
 
+import (
+	"delivery/internal/models"
+	"fmt"
+)
+
 type CustomerService struct {
 	store *CustomerStore
 }
@@ -8,58 +13,77 @@ func NewCustomerService(store *CustomerStore) *CustomerService {
 	return &CustomerService{store: store}
 }
 
-func (s *CustomerService) RegisterCustomer(name, email, phone string) (Customer, error) {
-	// Валидация данных
-	if err := ValidateEmail(email); err != nil {
-		return Customer{}, err
+func (s *CustomerService) Create(customer *models.Customer) error {
+	if err := ValidateEmail(customer.Email); err != nil {
+		return err
 	}
-	if err := ValidatePhone(phone); err != nil {
-		return Customer{}, err
-	}
-
-	customer := Customer{
-		Name:  name,
-		Email: email,
-		Phone: phone,
+	if err := ValidatePhone(customer.Phone); err != nil {
+		return err
 	}
 
-	// Добавление клиента в хранилище данных
-	id, err := s.store.Add(customer)
+	cust := models.Customer{
+		Name:  customer.Name,
+		Email: customer.Email,
+		Phone: customer.Phone,
+	}
+
+	id, err := s.store.Add(cust)
 	if err != nil {
-		return Customer{}, err
+		return err
 	}
 	customer.ID = id
-
-	return customer, nil
+	return nil
 }
 
-func (s *CustomerService) GetCustomer(id int) (Customer, error) {
-	return s.store.Get(id)
+func (s *CustomerService) Get(id int) (*models.Customer, error) {
+	customer, err := s.store.Get(id)
+	if err != nil {
+		return nil, fmt.Errorf("customer not found: %w", err)
+	}
+	return &models.Customer{
+		ID:    customer.ID,
+		Name:  customer.Name,
+		Email: customer.Email,
+		Phone: customer.Phone,
+	}, nil
 }
 
-func (s *CustomerService) UpdateCustomer(id int, name, email, phone string) error {
-	// Валидация данных
-	if err := ValidateEmail(email); err != nil {
-		return err
-	}
-	if err := ValidatePhone(phone); err != nil {
-		return err
-	}
-
-	// Обновление данных клиента
-	customer := Customer{
+func (s *CustomerService) Update(id int, customer *models.Customer) error {
+	cust := models.Customer{
 		ID:    id,
-		Name:  name,
-		Email: email,
-		Phone: phone,
+		Name:  customer.Name,
+		Email: customer.Email,
+		Phone: customer.Phone,
 	}
-	return s.store.Update(customer)
+
+	if err := ValidateEmail(cust.Email); err != nil {
+		return err
+	}
+	if err := ValidatePhone(cust.Phone); err != nil {
+		return err
+	}
+
+	return s.store.Update(cust)
 }
 
-func (s *CustomerService) DeleteCustomer(id int) error {
+func (s *CustomerService) Delete(id int) error {
 	return s.store.Delete(id)
 }
 
-func (s *CustomerService) String() string {
-	return "CustomerService {работает с клиентами}"
+func (s *CustomerService) List() ([]models.Customer, error) {
+	customers, err := s.store.GetAll()
+	if err != nil {
+		return nil, fmt.Errorf("Ошибка при получении списка клиентов: %w", err)
+	}
+
+	var result []models.Customer
+	for _, customer := range customers {
+		result = append(result, models.Customer{
+			ID:    customer.ID,
+			Name:  customer.Name,
+			Email: customer.Email,
+			Phone: customer.Phone,
+		})
+	}
+	return result, nil
 }

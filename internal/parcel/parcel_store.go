@@ -2,143 +2,118 @@ package parcel
 
 import (
 	"database/sql"
+	"delivery/internal/models"
 	"fmt"
+	"time"
 )
 
-// Подключение к БД - parcels.db
-func SetupParcelsDB() (*sql.DB, error) {
-	db, err := sql.Open("sqlite", "./internal/parcel/parcels.db")
-	if err != nil {
-		fmt.Printf("Не удалось подключиться к базе данных parcels: %v", err)
-		return nil, err
-	}
-
-	createTable := `CREATE TABLE IF NOT EXISTS parcel (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		client INTEGER,
-		status TEXT,
-		address TEXT,
-		created_at TEXT
-	);`
-	_, err = db.Exec(createTable)
-	if err != nil {
-		fmt.Printf("Ошибка при создании таблицы parcel: %v", err)
-		return nil, err
-	}
-
-	fmt.Println("База данных parcels.db и таблица parcel успешно инициализированы")
-	return db, nil
-}
-
-// Структура посылки
-type Parcel struct {
-	Number    int
-	Client    int
-	Status    string
-	Address   string
-	CreatedAt string
-}
-
-// Структура хранилища данных для работы с БД посылок
 type ParcelStore struct {
 	db *sql.DB
 }
 
-// Создание объекта хранилища данных
 func NewParcelStore(db *sql.DB) *ParcelStore {
 	return &ParcelStore{db: db}
 }
 
-// Добавление новой посылки в базу данных
-func (s ParcelStore) Add(p Parcel) (int, error) {
-	query := `INSERT INTO parcel (client, status, address, created_at) VALUES (?, ?, ?, ?)`
-	result, err := s.db.Exec(query, p.Client, p.Status, p.Address, p.CreatedAt)
+func (s *ParcelStore) Add(p models.Parcel) (int, error) {
+	createdAt := p.CreatedAt.Format(time.RFC3339) // Преобразование в строку для хранения в SQLite
+	query := `INSERT INTO parcels (client_id, address, status, created_at) VALUES (?, ?, ?, ?)`
+	result, err := s.db.Exec(query, p.ClientID, p.Address, p.Status, createdAt)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("Ошибка при добавлении посылки: %w", err)
 	}
-	// Получение идентификатора добавленной записи
 	id, err := result.LastInsertId()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("Ошибка получения ID посылки: %w", err)
 	}
-
 	return int(id), nil
 }
 
-// Получение данных о посылке по её идентификатору
-func (s ParcelStore) Get(number int) (Parcel, error) {
-	query := `SELECT id, client, status, address, created_at FROM parcel WHERE id = ?`
-	row := s.db.QueryRow(query, number)
-	p := Parcel{}
-	err := row.Scan(&p.Number, &p.Client, &p.Status, &p.Address, &p.CreatedAt)
+func (s *ParcelStore) Get(id int) (*models.Parcel, error) {
+	var parcel models.Parcel
+	var createdAtStr string
+
+	query := `SELECT id, client_id, address, status, created_at FROM parcels WHERE id = ?`
+	err := s.db.QueryRow(query, id).Scan(&parcel.ID, &parcel.ClientID, &parcel.Address, &parcel.Status, &createdAtStr)
 	if err != nil {
-		return p, err
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("Посылка с ID %d не найдена", id)
+		}
+		return nil, fmt.Errorf("Ошибка при получении посылки: %w", err)
 	}
-	return p, nil
+
+	// Преобразование строки в time.Time
+	parcel.CreatedAt, err = time.Parse(time.RFC3339, createdAtStr)
+	if err != nil {
+		return nil, fmt.Errorf("Ошибка преобразования created_at: %w", err)
+	}
+
+	return &parcel, nil
 }
 
-// Получение списка посылок клиента
-func (s ParcelStore) GetByClient(client int) ([]Parcel, error) {
-	query := `SELECT id, client, status, address, created_at FROM parcel WHERE client = ?`
-	rows, err := s.db.Query(query, client)
+func (s *ParcelStore) GetByClient(clientID int) ([]models.Parcel, error) {
+	query := `SELECT id, client_id, address, status, created_at FROM parcels WHERE client_id = ?`
+	rows, err := s.db.Query(query, clientID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Ошибка при получении посылок клиента: %w", err)
 	}
 	defer rows.Close()
 
-	var parceles []Parcel
+	var parcels []models.Parcel
 	for rows.Next() {
-		var p Parcel
-		err := rows.Scan(&p.Number, &p.Client, &p.Status, &p.Address, &p.CreatedAt)
+		var parcel models.Parcel
+		var createdAtStr string
+
+		err := rows.Scan(&parcel.ID, &parcel.ClientID, &parcel.Address, &parcel.Status, &createdAtStr)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("Ошибка при сканировании посылки: %w", err)
 		}
-		parceles = append(parceles, p)
+
+		// Преобразование created_at в time.Time
+		parcel.CreatedAt, err = time.Parse(time.RFC3339, createdAtStr)
+		if err != nil {
+			return nil, fmt.Errorf("Ошибка преобразования created_at: %w", err)
+		}
+
+		parcels = append(parcels, parcel)
 	}
-	return parceles, nil
+
+	return parcels, nil
 }
 
-// Обновление статуса посылки
-func (s ParcelStore) SetStatus(number int, status string) error {
-	query := `UPDATE parcel SET status = ? WHERE id = ?`
-	_, err := s.db.Exec(query, status, number)
-	return err
-}
-
-// Обновление адреса посылки (доступно только для статуса "registered")
-func (s ParcelStore) SetAddress(number int, address string) error {
-	query := `UPDATE parcel SET address = ? WHERE id = ? AND status = ?`
-	result, err := s.db.Exec(query, address, number, ParcelStatusRegistered)
+func (s *ParcelStore) Update(p models.Parcel) error {
+	createdAt := p.CreatedAt.Format(time.RFC3339) // Преобразование в строку
+	query := `UPDATE parcels SET client_id = ?, address = ?, status = ?, created_at = ? WHERE id = ?`
+	_, err := s.db.Exec(query, p.ClientID, p.Address, p.Status, createdAt, p.ID)
 	if err != nil {
-		return err
-	}
-	// Проверка, было ли обновлено хотя бы одно значение
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rowsAffected == 0 {
-		return fmt.Errorf("Изменение адреса доступно только для посылок со статусом %s", ParcelStatusRegistered)
+		return fmt.Errorf("Ошибка при обновлении посылки: %w", err)
 	}
 	return nil
 }
 
-// Удаление посылки (доступно только для статуса "registered")
-func (s ParcelStore) Delete(number int) error {
-	query := `DELETE FROM parcel WHERE id = ? AND status = ?`
-	result, err := s.db.Exec(query, number, ParcelStatusRegistered)
+func (s *ParcelStore) Delete(id int) error {
+	query := `DELETE FROM parcels WHERE id = ?`
+	_, err := s.db.Exec(query, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("Ошибка при удалении посылки: %w", err)
 	}
-	// Проверка, было ли удалено хотя бы одно значение
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
+	return nil
+}
 
-	if rowsAffected == 0 {
-		return fmt.Errorf("Удаление доступно только для посылок со статусом %s", ParcelStatusRegistered)
+func (s *ParcelStore) SetStatus(id int, status string) error {
+	query := `UPDATE parcels SET status = ? WHERE id = ?`
+	_, err := s.db.Exec(query, status, id)
+	if err != nil {
+		return fmt.Errorf("Ошибка при обновлении статуса посылки: %w", err)
+	}
+	return nil
+}
+
+func (s *ParcelStore) SetAddress(id int, address string) error {
+	query := `UPDATE parcels SET address = ? WHERE id = ?`
+	_, err := s.db.Exec(query, address, id)
+	if err != nil {
+		return fmt.Errorf("Ошибка при обновлении адреса посылки: %w", err)
 	}
 	return nil
 }
