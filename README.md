@@ -19,7 +19,7 @@
 1. Клонируйте репозиторий:
    ```sh
    git clone https://github.com/dgerasimchuk23/courier-delivery-service
-   cd courier-delivery-service
+   cd delivery
    ```
 
 2. Настройте базу данных:
