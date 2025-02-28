@@ -1,7 +1,7 @@
 package delivery
 
 import (
-	"delivery/internal/models"
+	"delivery/internal/business/models"
 	"fmt"
 	"time"
 )

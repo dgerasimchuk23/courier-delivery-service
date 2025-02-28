@@ -5,7 +5,7 @@ import (
 	"log"
 )
 
-// InitSchema создает таблицы в базе данных, если их нет
+// Создание таблиц в базе данных, если их нет
 func InitSchema(db *sql.DB) error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS customer (
@@ -13,6 +13,14 @@ func InitSchema(db *sql.DB) error {
 		name TEXT NOT NULL,
 		email TEXT UNIQUE NOT NULL,
 		phone TEXT NOT NULL
+	);
+	CREATE TABLE IF NOT EXISTS courier (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		phone TEXT NOT NULL,
+		email TEXT UNIQUE NOT NULL,
+		vehicle_id TEXT,
+		status TEXT NOT NULL
 	);
 	CREATE TABLE IF NOT EXISTS parcel (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,

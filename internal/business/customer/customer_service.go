@@ -1,7 +1,7 @@
 package customer
 
 import (
-	"delivery/internal/models"
+	"delivery/internal/business/models"
 	"fmt"
 )
 

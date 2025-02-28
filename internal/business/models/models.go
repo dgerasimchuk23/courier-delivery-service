@@ -30,3 +30,12 @@ type Delivery struct {
 	AssignedAt  time.Time `json:"assigned_at"`
 	DeliveredAt time.Time `json:"delivered_at"`
 }
+
+type Courier struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	Phone     string `json:"phone"`
+	Email     string `json:"email"`
+	VehicleID string `json:"vehicle_id,omitempty"`
+	Status    string `json:"status"`
+}

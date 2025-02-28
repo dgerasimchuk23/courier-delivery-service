@@ -1,7 +1,7 @@
 package parcel
 
 import (
-	"delivery/internal/models"
+	"delivery/internal/business/models"
 	"fmt"
 	"time"
 )

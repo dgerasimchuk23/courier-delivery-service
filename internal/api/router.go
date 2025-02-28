@@ -5,7 +5,7 @@ import (
 )
 
 // Маршрутизатор с зарегистрированными маршрутами
-func NewRouter(parcelHandler *ParcelHandler, customerHandler *CustomerHandler, deliveryHandler *DeliveryHandler) *mux.Router {
+func NewRouter(parcelHandler *ParcelHandler, customerHandler *CustomerHandler, deliveryHandler *DeliveryHandler, courierHandler *CourierHandler) *mux.Router {
 
 	r := mux.NewRouter()
 
@@ -33,6 +33,15 @@ func NewRouter(parcelHandler *ParcelHandler, customerHandler *CustomerHandler, d
 	r.HandleFunc("/deliveries/{id}", deliveryHandler.UpdateDelivery).Methods("PUT")
 	r.HandleFunc("/deliveries/{id}/complete", deliveryHandler.CompleteDelivery).Methods("PUT")
 	r.HandleFunc("/deliveries/{id}", deliveryHandler.DeleteDelivery).Methods("DELETE")
+
+	// Регистрирация маршрутов для курьеров
+	r.HandleFunc("/couriers", courierHandler.CreateCourier).Methods("POST")
+	r.HandleFunc("/couriers", courierHandler.ListCouriers).Methods("GET")
+	r.HandleFunc("/couriers/available", courierHandler.GetAvailableCouriers).Methods("GET")
+	r.HandleFunc("/couriers/{id}", courierHandler.GetCourier).Methods("GET")
+	r.HandleFunc("/couriers/{id}", courierHandler.UpdateCourier).Methods("PUT")
+	r.HandleFunc("/couriers/{id}/status", courierHandler.UpdateCourierStatus).Methods("PUT")
+	r.HandleFunc("/couriers/{id}", courierHandler.DeleteCourier).Methods("DELETE")
 
 	return r
 }

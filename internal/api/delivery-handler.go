@@ -1,7 +1,7 @@
 package api
 
 import (
-	"delivery/internal/models"
+	"delivery/internal/business/models"
 	"encoding/json"
 	"net/http"
 	"strconv"

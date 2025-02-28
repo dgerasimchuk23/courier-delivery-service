@@ -2,7 +2,7 @@ package parcel
 
 import (
 	"database/sql"
-	"delivery/internal/models"
+	"delivery/internal/business/models"
 	"fmt"
 	"time"
 )
