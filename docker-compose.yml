@@ -7,14 +7,27 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - DB_PATH=/data/database.db
-    volumes:
-      - ./data:/data
+      - DB_TYPE=postgres
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=delivery
+      - DB_SSLMODE=disable
     depends_on:
       - db
 
   db:
-    image: nouchka/sqlite3
-    container_name: delivery_db
+    image: postgres:14
+    container_name: delivery_postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=delivery
+    ports:
+      - "5432:5432"
     volumes:
-      - ./data:/data
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

@@ -2,39 +2,53 @@ package customer
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
+	"time"
 
-	"delivery/internal/models"
+	"delivery/internal/business/models"
 
+	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
-	_ "modernc.org/sqlite"
 )
 
 func setupCustomerTestDB() *CustomerStore {
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	// Подключение к PostgreSQL
+	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=delivery_test sslmode=disable"
+	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		panic(err)
 	}
 
-	_, _ = db.Exec("DROP TABLE IF EXISTS customer")
+	// Создаем уникальную таблицу для теста
+	tableName := fmt.Sprintf("customer_test_%d", time.Now().UnixNano())
 
-	createTable := `
-	CREATE TABLE customer (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
+	_, _ = db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName))
+
+	createTable := fmt.Sprintf(`
+	CREATE TABLE %s (
+		id SERIAL PRIMARY KEY,
 		name TEXT,
 		email TEXT,
 		phone TEXT
-	);`
+	);`, tableName)
+
 	_, err = db.Exec(createTable)
 	if err != nil {
 		panic(err)
 	}
 
-	return NewCustomerStore(db)
+	// Переопределяем SQL-запросы для работы с тестовой таблицей
+	store := NewCustomerStore(db)
+	store.tableName = tableName
+	return store
 }
 
 func TestAddCustomer(t *testing.T) {
 	store := setupCustomerTestDB()
+	defer func() {
+		_, _ = store.db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", store.tableName))
+	}()
 
 	customer := models.Customer{
 		Name:  "John Doe",
@@ -48,6 +62,9 @@ func TestAddCustomer(t *testing.T) {
 
 func TestGetCustomer(t *testing.T) {
 	store := setupCustomerTestDB()
+	defer func() {
+		_, _ = store.db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", store.tableName))
+	}()
 
 	customer := models.Customer{
 		Name:  "John Doe",
@@ -66,6 +83,9 @@ func TestGetCustomer(t *testing.T) {
 
 func TestUpdateCustomer(t *testing.T) {
 	store := setupCustomerTestDB()
+	defer func() {
+		_, _ = store.db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", store.tableName))
+	}()
 
 	customer := models.Customer{
 		Name:  "John Doe",
@@ -93,6 +113,9 @@ func TestUpdateCustomer(t *testing.T) {
 
 func TestDeleteCustomer(t *testing.T) {
 	store := setupCustomerTestDB()
+	defer func() {
+		_, _ = store.db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", store.tableName))
+	}()
 
 	customer := models.Customer{
 		Name:  "John Doe",

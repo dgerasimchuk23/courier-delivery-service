@@ -2,82 +2,237 @@ package delivery
 
 import (
 	"database/sql"
-	"regexp"
+	"delivery/internal/business/models"
+	"fmt"
 	"testing"
 	"time"
 
-	"delivery/internal/models"
-
-	"github.com/DATA-DOG/go-sqlmock"
+	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestStoreAdd(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
+func setupTestDB(t *testing.T) (*sql.DB, string, func()) {
+	// Подключаемся к базе данных PostgreSQL
+	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=delivery sslmode=disable"
+	testDB, err := sql.Open("postgres", connStr)
+	if err != nil {
+		t.Fatalf("ошибка при открытии тестовой БД: %v", err)
+	}
 
-	store := NewDeliveryStore(db)
+	// Создаем уникальное имя таблицы для теста
+	tableName := fmt.Sprintf("delivery_test_%d", time.Now().UnixNano())
 
-	mock.ExpectExec("INSERT INTO delivery").
-		WithArgs(1, 2, "assigned", sqlmock.AnyArg(), sql.NullTime{Valid: false}).
-		WillReturnResult(sqlmock.NewResult(1, 1))
+	// Создаем таблицу delivery для тестов
+	if _, err := testDB.Exec(fmt.Sprintf(`
+		CREATE TABLE %s (
+			id SERIAL PRIMARY KEY,
+			courier_id INTEGER NOT NULL,
+			parcel_id INTEGER NOT NULL,
+			status TEXT NOT NULL,
+			assigned_at TIMESTAMP NOT NULL,
+			delivered_at TIMESTAMP
+		);
+	`, tableName)); err != nil {
+		testDB.Close()
+		t.Fatalf("ошибка при создании таблицы delivery: %v", err)
+	}
 
+	// Возвращаем базу данных и функцию очистки
+	cleanup := func() {
+		_, err := testDB.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName))
+		if err != nil {
+			t.Logf("ошибка при удалении таблицы %s: %v", tableName, err)
+		}
+		testDB.Close()
+	}
+
+	return testDB, tableName, cleanup
+}
+
+func TestDeliveryStore_Add(t *testing.T) {
+	db, tableName, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	store := &DeliveryStore{
+		db:        db,
+		tableName: tableName,
+	}
+
+	now := time.Now().UTC()
 	delivery := models.Delivery{
 		CourierID:  1,
 		ParcelID:   2,
 		Status:     "assigned",
-		AssignedAt: time.Now().UTC(),
+		AssignedAt: now,
 	}
 
 	id, err := store.Add(delivery)
 	assert.NoError(t, err)
-	assert.Equal(t, 1, id)
-	mock.ExpectationsWereMet()
+	assert.Greater(t, id, 0)
+
+	// Проверяем, что запись добавлена
+	var count int
+	err = db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE id = $1", tableName), id).Scan(&count)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, count)
 }
 
-func TestStoreGet(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
+func TestDeliveryStore_Get(t *testing.T) {
+	db, tableName, cleanup := setupTestDB(t)
+	defer cleanup()
 
-	store := NewDeliveryStore(db)
-
-	rows := sqlmock.NewRows([]string{"id", "courier_id", "parcel_id", "status", "assigned_at", "delivered_at"}).
-		AddRow(1, 1, 2, "assigned", time.Now().UTC(), sql.NullTime{Valid: false})
-
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, courier_id, parcel_id, status, assigned_at, delivered_at FROM delivery WHERE id = ?")).
-		WithArgs(1).
-		WillReturnRows(rows)
-
-	delivery, err := store.Get(1)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, delivery.ID)
-	assert.Equal(t, "assigned", delivery.Status)
-	mock.ExpectationsWereMet()
-}
-
-func TestStoreUpdate(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
-
-	store := NewDeliveryStore(db)
-
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE delivery SET courier_id = ?, parcel_id = ?, status = ?, assigned_at = ?, delivered_at = ? WHERE id = ?")).
-		WithArgs(1, 2, "delivered", sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-
-	delivery := models.Delivery{
-		ID:          1,
-		CourierID:   1,
-		ParcelID:    2,
-		Status:      "delivered",
-		AssignedAt:  time.Now().UTC(),
-		DeliveredAt: time.Now().UTC(),
+	store := &DeliveryStore{
+		db:        db,
+		tableName: tableName,
 	}
+
+	now := time.Now().UTC()
+	delivery := models.Delivery{
+		CourierID:  1,
+		ParcelID:   2,
+		Status:     "assigned",
+		AssignedAt: now,
+	}
+
+	id, err := store.Add(delivery)
+	assert.NoError(t, err)
+
+	// Получаем доставку по ID
+	retrieved, err := store.Get(id)
+	assert.NoError(t, err)
+	assert.Equal(t, id, retrieved.ID)
+	assert.Equal(t, delivery.CourierID, retrieved.CourierID)
+	assert.Equal(t, delivery.ParcelID, retrieved.ParcelID)
+	assert.Equal(t, delivery.Status, retrieved.Status)
+	assert.WithinDuration(t, delivery.AssignedAt, retrieved.AssignedAt, time.Second)
+	assert.True(t, retrieved.DeliveredAt.IsZero())
+}
+
+func TestDeliveryStore_Update(t *testing.T) {
+	db, tableName, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	store := &DeliveryStore{
+		db:        db,
+		tableName: tableName,
+	}
+
+	now := time.Now().UTC()
+	delivery := models.Delivery{
+		CourierID:  1,
+		ParcelID:   2,
+		Status:     "assigned",
+		AssignedAt: now,
+	}
+
+	id, err := store.Add(delivery)
+	assert.NoError(t, err)
+
+	// Обновляем доставку
+	delivery.ID = id
+	delivery.Status = "delivered"
+	delivery.DeliveredAt = time.Now().UTC()
 
 	err = store.Update(delivery)
 	assert.NoError(t, err)
-	mock.ExpectationsWereMet()
+
+	// Проверяем обновление
+	retrieved, err := store.Get(id)
+	assert.NoError(t, err)
+	assert.Equal(t, "delivered", retrieved.Status)
+	assert.False(t, retrieved.DeliveredAt.IsZero())
+}
+
+func TestDeliveryStore_Delete(t *testing.T) {
+	db, tableName, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	store := &DeliveryStore{
+		db:        db,
+		tableName: tableName,
+	}
+
+	now := time.Now().UTC()
+	delivery := models.Delivery{
+		CourierID:  1,
+		ParcelID:   2,
+		Status:     "assigned",
+		AssignedAt: now,
+	}
+
+	id, err := store.Add(delivery)
+	assert.NoError(t, err)
+
+	// Удаляем доставку
+	err = store.Delete(id)
+	assert.NoError(t, err)
+
+	// Проверяем, что запись удалена
+	var count int
+	err = db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE id = $1", tableName), id).Scan(&count)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestDeliveryStore_GetByCourierID(t *testing.T) {
+	db, tableName, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	store := &DeliveryStore{
+		db:        db,
+		tableName: tableName,
+	}
+
+	now := time.Now().UTC()
+	delivery1 := models.Delivery{
+		CourierID:  1,
+		ParcelID:   2,
+		Status:     "assigned",
+		AssignedAt: now,
+	}
+
+	delivery2 := models.Delivery{
+		CourierID:   1,
+		ParcelID:    3,
+		Status:      "delivered",
+		AssignedAt:  now,
+		DeliveredAt: now.Add(time.Hour),
+	}
+
+	_, err := store.Add(delivery1)
+	assert.NoError(t, err)
+	_, err = store.Add(delivery2)
+	assert.NoError(t, err)
+
+	// Получаем доставки по ID курьера
+	deliveries, err := store.GetByCourierID(1)
+	assert.NoError(t, err)
+	assert.Len(t, deliveries, 2)
+}
+
+func TestDeliveryStore_GetByParcelID(t *testing.T) {
+	db, tableName, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	store := &DeliveryStore{
+		db:        db,
+		tableName: tableName,
+	}
+
+	now := time.Now().UTC()
+	delivery := models.Delivery{
+		CourierID:  1,
+		ParcelID:   2,
+		Status:     "assigned",
+		AssignedAt: now,
+	}
+
+	_, err := store.Add(delivery)
+	assert.NoError(t, err)
+
+	// Получаем доставку по ID посылки
+	retrieved, err := store.GetByParcelID(2)
+	assert.NoError(t, err)
+	assert.Equal(t, delivery.ParcelID, retrieved.ParcelID)
+	assert.Equal(t, delivery.CourierID, retrieved.CourierID)
 }

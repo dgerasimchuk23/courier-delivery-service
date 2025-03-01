@@ -9,7 +9,14 @@ import (
 // Структура для хранения конфигурации
 type Config struct {
 	Database struct {
-		DSN string `json:"dsn"`
+		Type     string `json:"type"`     // "sqlite" или "postgres"
+		Host     string `json:"host"`     // для PostgreSQL
+		Port     int    `json:"port"`     // для PostgreSQL
+		User     string `json:"user"`     // для PostgreSQL
+		Password string `json:"password"` // для PostgreSQL
+		DBName   string `json:"dbname"`   // для PostgreSQL
+		SSLMode  string `json:"sslmode"`  // для PostgreSQL
+		DSN      string `json:"dsn"`      // для SQLite - путь к файлу БД
 	} `json:"database"`
 	Server struct {
 		Host string `json:"host"`

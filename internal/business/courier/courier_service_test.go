@@ -1,7 +1,7 @@
 package courier
 
 import (
-	"delivery/internal/models"
+	"delivery/internal/business/models"
 	"errors"
 	"testing"
 )

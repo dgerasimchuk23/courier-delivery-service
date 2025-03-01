@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"delivery/internal/models"
+	"delivery/internal/business/models"
 
 	"github.com/stretchr/testify/require"
 )

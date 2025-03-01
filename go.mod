@@ -5,6 +5,7 @@ go 1.22.5
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/gorilla/mux v1.8.1
+	github.com/lib/pq v1.10.9
 	github.com/stretchr/testify v1.10.0
 	modernc.org/sqlite v1.34.5
 )
@@ -17,7 +18,6 @@ require (
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/stretchr/objx v0.5.2 // indirect
 	golang.org/x/sys v0.22.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.55.3 // indirect

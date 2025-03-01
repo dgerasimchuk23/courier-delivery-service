@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"delivery/internal/models"
+	"delivery/internal/business/models"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
@@ -24,7 +24,7 @@ func TestServiceGet(t *testing.T) {
 	rows := sqlmock.NewRows([]string{"id", "courier_id", "parcel_id", "status", "assigned_at", "delivered_at"}).
 		AddRow(1, 1, 2, "assigned", time.Now().UTC(), sql.NullTime{Valid: false})
 
-	mock.ExpectQuery("SELECT id, courier_id, parcel_id, status, assigned_at, delivered_at FROM delivery WHERE id = ?").
+	mock.ExpectQuery("SELECT id, courier_id, parcel_id, status, assigned_at, delivered_at FROM delivery WHERE id = \\$1").
 		WithArgs(1).
 		WillReturnRows(rows)
 
@@ -43,7 +43,7 @@ func TestServiceUpdate(t *testing.T) {
 	store := NewDeliveryStore(db)
 	service := NewDeliveryService(store)
 
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE delivery SET courier_id = ?, parcel_id = ?, status = ?, assigned_at = ?, delivered_at = ? WHERE id = ?")).
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE delivery SET courier_id = $1, parcel_id = $2, status = $3, assigned_at = $4, delivered_at = $5 WHERE id = $6")).
 		WithArgs(1, 2, "delivered", sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 

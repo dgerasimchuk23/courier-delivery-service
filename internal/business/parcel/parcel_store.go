@@ -8,32 +8,33 @@ import (
 )
 
 type ParcelStore struct {
-	db *sql.DB
+	db        *sql.DB
+	tableName string
 }
 
 func NewParcelStore(db *sql.DB) *ParcelStore {
-	return &ParcelStore{db: db}
+	return &ParcelStore{
+		db:        db,
+		tableName: "parcels",
+	}
 }
 
 func (s *ParcelStore) Add(p models.Parcel) (int, error) {
-	createdAt := p.CreatedAt.Format(time.RFC3339) // Преобразование в строку для хранения в SQLite
-	query := `INSERT INTO parcels (client_id, address, status, created_at) VALUES (?, ?, ?, ?)`
-	result, err := s.db.Exec(query, p.ClientID, p.Address, p.Status, createdAt)
+	createdAt := p.CreatedAt.Format(time.RFC3339) // Преобразование в строку для хранения в базе данных
+	query := fmt.Sprintf(`INSERT INTO %s (client_id, address, status, created_at) VALUES ($1, $2, $3, $4) RETURNING id`, s.tableName)
+	var id int
+	err := s.db.QueryRow(query, p.ClientID, p.Address, p.Status, createdAt).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("Ошибка при добавлении посылки: %w", err)
 	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("Ошибка получения ID посылки: %w", err)
-	}
-	return int(id), nil
+	return id, nil
 }
 
 func (s *ParcelStore) Get(id int) (*models.Parcel, error) {
 	var parcel models.Parcel
 	var createdAtStr string
 
-	query := `SELECT id, client_id, address, status, created_at FROM parcels WHERE id = ?`
+	query := fmt.Sprintf(`SELECT id, client_id, address, status, created_at FROM %s WHERE id = $1`, s.tableName)
 	err := s.db.QueryRow(query, id).Scan(&parcel.ID, &parcel.ClientID, &parcel.Address, &parcel.Status, &createdAtStr)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -52,7 +53,7 @@ func (s *ParcelStore) Get(id int) (*models.Parcel, error) {
 }
 
 func (s *ParcelStore) GetByClient(clientID int) ([]models.Parcel, error) {
-	query := `SELECT id, client_id, address, status, created_at FROM parcels WHERE client_id = ?`
+	query := fmt.Sprintf(`SELECT id, client_id, address, status, created_at FROM %s WHERE client_id = $1`, s.tableName)
 	rows, err := s.db.Query(query, clientID)
 	if err != nil {
 		return nil, fmt.Errorf("Ошибка при получении посылок клиента: %w", err)
@@ -83,7 +84,7 @@ func (s *ParcelStore) GetByClient(clientID int) ([]models.Parcel, error) {
 
 func (s *ParcelStore) Update(p models.Parcel) error {
 	createdAt := p.CreatedAt.Format(time.RFC3339) // Преобразование в строку
-	query := `UPDATE parcels SET client_id = ?, address = ?, status = ?, created_at = ? WHERE id = ?`
+	query := fmt.Sprintf(`UPDATE %s SET client_id = $1, address = $2, status = $3, created_at = $4 WHERE id = $5`, s.tableName)
 	_, err := s.db.Exec(query, p.ClientID, p.Address, p.Status, createdAt, p.ID)
 	if err != nil {
 		return fmt.Errorf("Ошибка при обновлении посылки: %w", err)
@@ -92,7 +93,7 @@ func (s *ParcelStore) Update(p models.Parcel) error {
 }
 
 func (s *ParcelStore) Delete(id int) error {
-	query := `DELETE FROM parcels WHERE id = ?`
+	query := fmt.Sprintf(`DELETE FROM %s WHERE id = $1`, s.tableName)
 	_, err := s.db.Exec(query, id)
 	if err != nil {
 		return fmt.Errorf("Ошибка при удалении посылки: %w", err)
@@ -101,7 +102,7 @@ func (s *ParcelStore) Delete(id int) error {
 }
 
 func (s *ParcelStore) SetStatus(id int, status string) error {
-	query := `UPDATE parcels SET status = ? WHERE id = ?`
+	query := fmt.Sprintf(`UPDATE %s SET status = $1 WHERE id = $2`, s.tableName)
 	_, err := s.db.Exec(query, status, id)
 	if err != nil {
 		return fmt.Errorf("Ошибка при обновлении статуса посылки: %w", err)
@@ -110,7 +111,7 @@ func (s *ParcelStore) SetStatus(id int, status string) error {
 }
 
 func (s *ParcelStore) SetAddress(id int, address string) error {
-	query := `UPDATE parcels SET address = ? WHERE id = ?`
+	query := fmt.Sprintf(`UPDATE %s SET address = $1 WHERE id = $2`, s.tableName)
 	_, err := s.db.Exec(query, address, id)
 	if err != nil {
 		return fmt.Errorf("Ошибка при обновлении адреса посылки: %w", err)

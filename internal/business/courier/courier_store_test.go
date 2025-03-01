@@ -2,58 +2,60 @@ package courier
 
 import (
 	"database/sql"
-	"delivery/internal/models"
-	"os"
+	"delivery/internal/business/models"
+	"fmt"
 	"testing"
+	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/lib/pq"
 )
 
-func setupTestDB(t *testing.T) (*sql.DB, func()) {
-	// Создаем временный файл базы данных для тестов
-	tmpFile, err := os.CreateTemp("", "test_courier_*.db")
-	if err != nil {
-		t.Fatalf("ошибка при создании временного файла БД: %v", err)
-	}
-	tmpFilePath := tmpFile.Name()
-	tmpFile.Close()
-
-	// Подключаемся к базе данных
-	testDB, err := sql.Open("sqlite3", tmpFilePath)
+func setupTestDB(t *testing.T) (*sql.DB, string, func()) {
+	// Подключаемся к базе данных PostgreSQL
+	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=delivery sslmode=disable"
+	testDB, err := sql.Open("postgres", connStr)
 	if err != nil {
 		t.Fatalf("ошибка при открытии тестовой БД: %v", err)
 	}
 
+	// Создаем уникальное имя таблицы для теста
+	tableName := fmt.Sprintf("courier_test_%d", time.Now().UnixNano())
+
 	// Создаем таблицу courier для тестов
-	if _, err := testDB.Exec(`
-		CREATE TABLE courier (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
+	if _, err := testDB.Exec(fmt.Sprintf(`
+		CREATE TABLE %s (
+			id SERIAL PRIMARY KEY,
 			name TEXT NOT NULL,
 			phone TEXT NOT NULL,
 			email TEXT UNIQUE NOT NULL,
 			vehicle_id TEXT,
 			status TEXT NOT NULL
 		);
-	`); err != nil {
+	`, tableName)); err != nil {
 		testDB.Close()
-		os.Remove(tmpFilePath)
 		t.Fatalf("ошибка при создании таблицы courier: %v", err)
 	}
 
 	// Возвращаем базу данных и функцию очистки
 	cleanup := func() {
+		_, err := testDB.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName))
+		if err != nil {
+			t.Logf("ошибка при удалении таблицы %s: %v", tableName, err)
+		}
 		testDB.Close()
-		os.Remove(tmpFilePath)
 	}
 
-	return testDB, cleanup
+	return testDB, tableName, cleanup
 }
 
 func TestCourierStore_Add(t *testing.T) {
-	db, cleanup := setupTestDB(t)
+	db, tableName, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	store := NewCourierStore(db)
+	store := &CourierStore{
+		db:        db,
+		tableName: tableName,
+	}
 
 	courier := models.Courier{
 		Name:      "Тестовый Курьер",
@@ -74,10 +76,13 @@ func TestCourierStore_Add(t *testing.T) {
 }
 
 func TestCourierStore_Get(t *testing.T) {
-	db, cleanup := setupTestDB(t)
+	db, tableName, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	store := NewCourierStore(db)
+	store := &CourierStore{
+		db:        db,
+		tableName: tableName,
+	}
 
 	// Добавляем тестового курьера
 	courier := models.Courier{

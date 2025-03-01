@@ -10,11 +10,15 @@ import (
 
 // Структура для работы с базой данных клиентов
 type CustomerStore struct {
-	db *sql.DB
+	db        *sql.DB
+	tableName string
 }
 
 func NewCustomerStore(db *sql.DB) *CustomerStore {
-	return &CustomerStore{db: db}
+	return &CustomerStore{
+		db:        db,
+		tableName: "customer",
+	}
 }
 
 // Обрабатывает и логирует ошибки
@@ -26,20 +30,17 @@ func logAndReturnError(context string, err error) error {
 }
 
 func (s CustomerStore) Add(c models.Customer) (int, error) {
-	query := `INSERT INTO customer (name, email, phone) VALUES (?, ?, ?)`
-	result, err := s.db.Exec(query, c.Name, c.Email, c.Phone)
+	query := fmt.Sprintf("INSERT INTO %s (name, email, phone) VALUES ($1, $2, $3) RETURNING id", s.tableName)
+	var id int
+	err := s.db.QueryRow(query, c.Name, c.Email, c.Phone).Scan(&id)
 	if err != nil {
 		return 0, logAndReturnError("Ошибка добавления клиента", err)
 	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return 0, logAndReturnError("Ошибка получения ID последнего вставленного клиента", err)
-	}
-	return int(id), nil
+	return id, nil
 }
 
 func (s CustomerStore) Get(id int) (models.Customer, error) {
-	query := `SELECT id, name, email, phone FROM customer WHERE id = ?`
+	query := fmt.Sprintf("SELECT id, name, email, phone FROM %s WHERE id = $1", s.tableName)
 	row := s.db.QueryRow(query, id)
 	c := models.Customer{}
 	err := row.Scan(&c.ID, &c.Name, &c.Email, &c.Phone)
@@ -53,7 +54,7 @@ func (s CustomerStore) Get(id int) (models.Customer, error) {
 }
 
 func (s *CustomerStore) GetByClient(clientID int) ([]models.Customer, error) {
-	query := `SELECT id, name, email, phone FROM customer WHERE id = ?`
+	query := fmt.Sprintf("SELECT id, name, email, phone FROM %s WHERE id = $1", s.tableName)
 	rows, err := s.db.Query(query, clientID)
 	if err != nil {
 		return nil, fmt.Errorf("Ошибка при запросе клиентов: %w", err)
@@ -76,13 +77,13 @@ func (s *CustomerStore) GetByClient(clientID int) ([]models.Customer, error) {
 }
 
 func (s CustomerStore) Update(c models.Customer) error {
-	query := `UPDATE customer SET name = ?, email = ?, phone = ? WHERE id = ?`
+	query := fmt.Sprintf("UPDATE %s SET name = $1, email = $2, phone = $3 WHERE id = $4", s.tableName)
 	_, err := s.db.Exec(query, c.Name, c.Email, c.Phone, c.ID)
 	return logAndReturnError("Ошибка обновления клиента", err)
 }
 
 func (s CustomerStore) Delete(id int) error {
-	query := `DELETE FROM customer WHERE id = ?`
+	query := fmt.Sprintf("DELETE FROM %s WHERE id = $1", s.tableName)
 	_, err := s.db.Exec(query, id)
 	return logAndReturnError("Ошибка удаления клиента", err)
 }
@@ -104,7 +105,8 @@ func ValidatePhone(phone string) error {
 }
 
 func (s *CustomerStore) GetAll() ([]models.Customer, error) {
-	rows, err := s.db.Query("SELECT id, name, email, phone FROM customers")
+	query := fmt.Sprintf("SELECT id, name, email, phone FROM %s", s.tableName)
+	rows, err := s.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("Ошибка при получении списка клиентов: %w", err)
 	}

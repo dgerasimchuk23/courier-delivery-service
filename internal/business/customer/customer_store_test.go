@@ -1,16 +1,20 @@
 package customer
 
 import (
+	"fmt"
 	"testing"
 
-	"delivery/internal/models"
+	"delivery/internal/business/models"
 
+	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
-	_ "modernc.org/sqlite"
 )
 
 func TestCustomerStore(t *testing.T) {
 	store := setupCustomerTestDB()
+	defer func() {
+		_, _ = store.db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", store.tableName))
+	}()
 
 	// Добавление клиента
 	customer := models.Customer{

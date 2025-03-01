@@ -11,7 +11,7 @@ import (
 	"log"
 	"strconv"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/lib/pq" // драйвер PostgreSQL
 )
 
 func main() {
@@ -21,7 +21,7 @@ func main() {
 		log.Fatalf("Ошибка загрузки конфигурации: %v", err)
 	}
 
-	database := db.InitDB(config.Database.DSN)
+	database := db.InitDB(config)
 	defer database.Close()
 
 	// Инициализация хранилищ
