@@ -8,8 +8,23 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
+
+// Секретный ключ для подписи JWT токенов
+const (
+	jwtSecret       = "your-secret-key-here" // В реальном приложении должен быть в конфигурации
+	accessTokenTTL  = 7 * time.Minute        // Время жизни access токена
+	refreshTokenTTL = 30 * 24 * time.Hour    // Время жизни refresh токена (30 дней)
+)
+
+// Claims представляет данные, которые будут храниться в JWT токене
+type Claims struct {
+	UserID int `json:"user_id"`
+	jwt.RegisteredClaims
+}
 
 // Предоставляет методы для аутентификации и авторизации
 type AuthService struct {
@@ -35,13 +50,19 @@ func (s *AuthService) RegisterUser(email, password string) error {
 		return errors.New("email и пароль не могут быть пустыми")
 	}
 
+	// Хеширование пароля
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("ошибка при хешировании пароля: %w", err)
+	}
+
 	// Создание пользователя
 	user := models.User{
 		Email:    email,
-		Password: password, // Пароль хранится в открытом виде
+		Password: string(hashedPassword),
 	}
 
-	_, err := s.store.CreateUser(user)
+	_, err = s.store.CreateUser(user)
 	if err != nil {
 		return fmt.Errorf("ошибка при регистрации пользователя: %w", err)
 	}
@@ -50,14 +71,43 @@ func (s *AuthService) RegisterUser(email, password string) error {
 }
 
 // Генерация токенов для пользователя
-func (s *AuthService) GenerateTokens(userID int) (string, string) {
+func (s *AuthService) GenerateTokens(userID int) (string, string, error) {
 	// Генерация access токена
-	accessToken := fmt.Sprintf("access_token_%d", userID)
+	accessTokenExpiry := time.Now().Add(accessTokenTTL)
+	accessClaims := &Claims{
+		UserID: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(accessTokenExpiry),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+			Issuer:    "delivery-app",
+			Subject:   fmt.Sprintf("%d", userID),
+		},
+	}
+
+	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
+	accessTokenString, err := accessToken.SignedString([]byte(jwtSecret))
+	if err != nil {
+		return "", "", fmt.Errorf("ошибка при создании access токена: %w", err)
+	}
 
 	// Генерация refresh токена с использованием UUID
 	refreshToken := uuid.NewString()
 
-	return accessToken, refreshToken
+	// Сохранение refresh токена в БД
+	tokenExpiry := time.Now().UTC().Add(refreshTokenTTL)
+	tokenModel := models.RefreshToken{
+		UserID:    userID,
+		Token:     refreshToken,
+		ExpiresAt: tokenExpiry,
+	}
+
+	err = s.store.SaveRefreshToken(tokenModel)
+	if err != nil {
+		return "", "", fmt.Errorf("ошибка при сохранении refresh токена: %w", err)
+	}
+
+	return accessTokenString, refreshToken, nil
 }
 
 // Аутентификация пользователя и возвращение токенов
@@ -69,24 +119,15 @@ func (s *AuthService) LoginUser(email, password string) (string, string, error) 
 	}
 
 	// Проверка пароля
-	if user.Password != password {
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
+	if err != nil {
 		return "", "", errors.New("неверный пароль")
 	}
 
 	// Генерация токенов
-	accessToken, refreshToken := s.GenerateTokens(user.ID)
-
-	// Сохранение refresh токена в БД
-	tokenExpiry := time.Now().UTC().Add(30 * 24 * time.Hour) // 30 дней
-	tokenModel := models.RefreshToken{
-		UserID:    user.ID,
-		Token:     refreshToken,
-		ExpiresAt: tokenExpiry,
-	}
-
-	err = s.store.SaveRefreshToken(tokenModel)
+	accessToken, refreshToken, err := s.GenerateTokens(user.ID)
 	if err != nil {
-		return "", "", fmt.Errorf("ошибка при сохранении токена: %w", err)
+		return "", "", fmt.Errorf("ошибка при генерации токенов: %w", err)
 	}
 
 	return accessToken, refreshToken, nil
@@ -112,19 +153,9 @@ func (s *AuthService) RefreshToken(refreshToken string) (string, string, error) 
 	}
 
 	// Генерируем новые токены
-	accessToken, newRefreshToken := s.GenerateTokens(token.UserID)
-
-	// Сохраняем новый refresh токен
-	tokenExpiry := time.Now().UTC().Add(30 * 24 * time.Hour) // 30 дней
-	newTokenModel := models.RefreshToken{
-		UserID:    token.UserID,
-		Token:     newRefreshToken,
-		ExpiresAt: tokenExpiry,
-	}
-
-	err = s.store.SaveRefreshToken(newTokenModel)
+	accessToken, newRefreshToken, err := s.GenerateTokens(token.UserID)
 	if err != nil {
-		return "", "", fmt.Errorf("ошибка при сохранении нового refresh токена: %w", err)
+		return "", "", fmt.Errorf("ошибка при генерации новых токенов: %w", err)
 	}
 
 	return accessToken, newRefreshToken, nil
@@ -142,23 +173,66 @@ func (s *AuthService) Logout(accessToken, refreshToken string) error {
 	if s.cacheClient != nil {
 		ctx := context.Background()
 
-		// Извлекаем ID пользователя из токена для определения времени жизни
-		var userID int
-		_, scanErr := fmt.Sscanf(accessToken, "access_token_%d", &userID)
-		if scanErr != nil {
-			return fmt.Errorf("ошибка при извлечении ID пользователя из токена: %w", scanErr)
+		// Парсим токен для получения времени истечения
+		token, err := jwt.ParseWithClaims(accessToken, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+			// Проверяем метод подписи
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("неожиданный метод подписи: %v", token.Header["alg"])
+			}
+			return []byte(jwtSecret), nil
+		})
+
+		if err != nil {
+			// Если токен не может быть распарсен, просто добавляем его в черный список на стандартное время
+			blacklistKey := fmt.Sprintf("blacklist:%s", accessToken)
+			err := s.cacheClient.Set(ctx, blacklistKey, "revoked", accessTokenTTL)
+			if err != nil {
+				return fmt.Errorf("ошибка при добавлении токена в черный список: %w", err)
+			}
+			return nil
 		}
 
-		// В реальном приложении здесь нужно извлечь время истечения из JWT
-		// Сейчас просто устанавливаем TTL в 7 минут (как указано в требованиях)
-		expiration := 7 * time.Minute
+		// Получаем время истечения токена
+		if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+			// Вычисляем оставшееся время жизни токена
+			expiresAt := claims.ExpiresAt.Time
+			ttl := time.Until(expiresAt)
+			if ttl < 0 {
+				// Если токен уже истек, нет необходимости добавлять его в черный список
+				return nil
+			}
 
-		blacklistKey := fmt.Sprintf("blacklist:%s", accessToken)
-		err := s.cacheClient.Set(ctx, blacklistKey, "revoked", expiration)
-		if err != nil {
-			return fmt.Errorf("ошибка при добавлении токена в черный список: %w", err)
+			// Добавляем токен в черный список на оставшееся время жизни
+			blacklistKey := fmt.Sprintf("blacklist:%s", accessToken)
+			err := s.cacheClient.Set(ctx, blacklistKey, "revoked", ttl)
+			if err != nil {
+				return fmt.Errorf("ошибка при добавлении токена в черный список: %w", err)
+			}
 		}
 	}
 
 	return nil
+}
+
+// ValidateToken проверяет валидность токена и возвращает ID пользователя
+func (s *AuthService) ValidateToken(tokenString string) (int, error) {
+	// Парсим токен
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		// Проверяем метод подписи
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("неожиданный метод подписи: %v", token.Header["alg"])
+		}
+		return []byte(jwtSecret), nil
+	})
+
+	if err != nil {
+		return 0, fmt.Errorf("ошибка при проверке токена: %w", err)
+	}
+
+	// Проверяем валидность токена
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims.UserID, nil
+	}
+
+	return 0, errors.New("недействительный токен")
 }

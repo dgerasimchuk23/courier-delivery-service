@@ -55,7 +55,7 @@ func (m *JWTMiddleware) Middleware(next http.Handler) http.Handler {
 		}
 
 		// Проверяем валидность токена
-		userID, err := m.validateToken(token)
+		userID, err := m.authService.ValidateToken(token)
 		if err != nil {
 			http.Error(w, "Недействительный токен: "+err.Error(), http.StatusUnauthorized)
 			return

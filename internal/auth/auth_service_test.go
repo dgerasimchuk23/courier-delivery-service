@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestRegisterUser(t *testing.T) {
@@ -34,8 +36,9 @@ func TestRegisterUser(t *testing.T) {
 					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 
 				// Используем QueryRow вместо Exec для INSERT
+				// Обратите внимание, что пароль теперь хешируется, поэтому используем AnyArg()
 				mock.ExpectQuery(`INSERT INTO users \(email, password, created_at, updated_at\) VALUES \(\$1, \$2, \$3, \$4\) RETURNING id`).
-					WithArgs("test@example.com", "password123", sqlmock.AnyArg(), sqlmock.AnyArg()).
+					WithArgs("test@example.com", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 			},
 			wantErr: false,
@@ -84,6 +87,9 @@ func TestLoginUser(t *testing.T) {
 	// Создаем фиксированное время для тестов
 	now := time.Now().UTC()
 
+	// Хешируем пароль для тестов
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
+
 	tests := []struct {
 		email    string
 		password string
@@ -97,9 +103,9 @@ func TestLoginUser(t *testing.T) {
 				mock.ExpectQuery(`SELECT id, email, password, created_at, updated_at FROM users WHERE email = \$1`).
 					WithArgs("test@example.com").
 					WillReturnRows(sqlmock.NewRows([]string{"id", "email", "password", "created_at", "updated_at"}).
-						AddRow(1, "test@example.com", "password123", now, now))
+						AddRow(1, "test@example.com", string(hashedPassword), now, now))
 
-				// Добавляем ожидание для GenerateTokens
+				// Добавляем ожидание для сохранения refresh токена
 				mock.ExpectExec(`INSERT INTO refresh_tokens \(user_id, token, expires_at, created_at\) VALUES \(\$1, \$2, \$3, \$4\)`).
 					WithArgs(1, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 					WillReturnResult(sqlmock.NewResult(1, 1))
@@ -123,7 +129,7 @@ func TestLoginUser(t *testing.T) {
 				mock.ExpectQuery(`SELECT id, email, password, created_at, updated_at FROM users WHERE email = \$1`).
 					WithArgs("test@example.com").
 					WillReturnRows(sqlmock.NewRows([]string{"id", "email", "password", "created_at", "updated_at"}).
-						AddRow(1, "test@example.com", "password123", now, now))
+						AddRow(1, "test@example.com", string(hashedPassword), now, now))
 			},
 			wantErr: true,
 		},
@@ -232,6 +238,90 @@ func TestRefreshToken(t *testing.T) {
 
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+	}
+}
+
+func TestValidateToken(t *testing.T) {
+	userStore := NewUserStore(nil) // Для этого теста БД не нужна
+	authService := NewAuthService(userStore)
+
+	// Создаем тестовый токен
+	claims := &Claims{
+		UserID: 123,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+			Issuer:    "delivery-app",
+			Subject:   "123",
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	validTokenString, _ := token.SignedString([]byte(jwtSecret))
+
+	// Создаем просроченный токен
+	expiredClaims := &Claims{
+		UserID: 456,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour)), // Токен истек час назад
+			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
+			NotBefore: jwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
+			Issuer:    "delivery-app",
+			Subject:   "456",
+		},
+	}
+
+	expiredToken := jwt.NewWithClaims(jwt.SigningMethodHS256, expiredClaims)
+	expiredTokenString, _ := expiredToken.SignedString([]byte(jwtSecret))
+
+	// Создаем токен с неверной подписью
+	invalidToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	invalidTokenString, _ := invalidToken.SignedString([]byte("wrong-secret"))
+
+	tests := []struct {
+		name        string
+		tokenString string
+		wantUserID  int
+		wantErr     bool
+	}{
+		{
+			name:        "Valid token",
+			tokenString: validTokenString,
+			wantUserID:  123,
+			wantErr:     false,
+		},
+		{
+			name:        "Expired token",
+			tokenString: expiredTokenString,
+			wantUserID:  0,
+			wantErr:     true,
+		},
+		{
+			name:        "Invalid token signature",
+			tokenString: invalidTokenString,
+			wantUserID:  0,
+			wantErr:     true,
+		},
+		{
+			name:        "Invalid token format",
+			tokenString: "not-a-jwt-token",
+			wantUserID:  0,
+			wantErr:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userID, err := authService.ValidateToken(tt.tokenString)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateToken() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if userID != tt.wantUserID {
+				t.Errorf("ValidateToken() userID = %v, want %v", userID, tt.wantUserID)
 			}
 		})
 	}
