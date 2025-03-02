@@ -9,6 +9,12 @@ type Authenticator interface {
 
 	// Аутентификация пользователя и возвращение токенов
 	LoginUser(email, password string) (accessToken, refreshToken string, err error)
+
+	// Обновление токенов по refresh токену
+	RefreshToken(refreshToken string) (newAccessToken, newRefreshToken string, err error)
+
+	// Выход пользователя (логаут)
+	Logout(accessToken, refreshToken string) error
 }
 
 // Интерфейс для работы с пользователями
