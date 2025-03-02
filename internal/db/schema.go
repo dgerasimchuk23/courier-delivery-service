@@ -39,6 +39,21 @@ func InitSchema(db *sql.DB, dbType string) error {
 		delivered_at TIMESTAMP DEFAULT NULL,
 		FOREIGN KEY (courier_id) REFERENCES courier(id) ON DELETE CASCADE,
 		FOREIGN KEY (parcel_id) REFERENCES parcel(id) ON DELETE CASCADE
+	);
+	CREATE TABLE IF NOT EXISTS users (
+		id SERIAL PRIMARY KEY,
+		email TEXT UNIQUE NOT NULL,
+		password TEXT NOT NULL,
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL
+	);
+	CREATE TABLE IF NOT EXISTS refresh_tokens (
+		id SERIAL PRIMARY KEY,
+		user_id INTEGER NOT NULL,
+		token TEXT UNIQUE NOT NULL,
+		expires_at TIMESTAMP NOT NULL,
+		created_at TIMESTAMP NOT NULL,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 	);`
 
 	if _, err := db.Exec(schema); err != nil {
