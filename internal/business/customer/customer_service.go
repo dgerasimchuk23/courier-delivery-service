@@ -32,6 +32,7 @@ func (s *CustomerService) Create(customer *models.Customer) error {
 		return err
 	}
 	customer.ID = id
+
 	return nil
 }
 
@@ -40,6 +41,7 @@ func (s *CustomerService) Get(id int) (*models.Customer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("customer not found: %w", err)
 	}
+
 	return &models.Customer{
 		ID:    customer.ID,
 		Name:  customer.Name,
@@ -85,5 +87,6 @@ func (s *CustomerService) List() ([]models.Customer, error) {
 			Phone: customer.Phone,
 		})
 	}
+
 	return result, nil
 }

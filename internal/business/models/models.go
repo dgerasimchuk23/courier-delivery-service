@@ -22,15 +22,6 @@ type Parcel struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type Delivery struct {
-	ID          int       `json:"id"`
-	CourierID   int       `json:"courier_id"`
-	ParcelID    int       `json:"parcel_id"`
-	Status      string    `json:"status"`
-	AssignedAt  time.Time `json:"assigned_at"`
-	DeliveredAt time.Time `json:"delivered_at"`
-}
-
 type Courier struct {
 	ID        int    `json:"id"`
 	Name      string `json:"name"`
@@ -38,4 +29,13 @@ type Courier struct {
 	Email     string `json:"email"`
 	VehicleID string `json:"vehicle_id,omitempty"`
 	Status    string `json:"status"`
+}
+
+type Delivery struct {
+	ID          int       `json:"id"`
+	CourierID   int       `json:"courier_id"`
+	ParcelID    int       `json:"parcel_id"`
+	Status      string    `json:"status"`
+	AssignedAt  time.Time `json:"assigned_at"`
+	DeliveredAt time.Time `json:"delivered_at"`
 }

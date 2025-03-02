@@ -7,10 +7,16 @@
       "password": "postgres",
       "dbname": "delivery",
       "sslmode": "disable",
-      "dsn": "./internal/db/main.db"
+      "dsn": "delivery.db"
+    },
+    "redis": {
+      "host": "localhost",
+      "port": 6379,
+      "password": "",
+      "db": 0
     },
     "server": {
-      "host": "localhost",
+      "host": "0.0.0.0",
       "port": 8080
     }
   }

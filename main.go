@@ -7,6 +7,7 @@ import (
 	"delivery/internal/business/customer"
 	"delivery/internal/business/delivery"
 	"delivery/internal/business/parcel"
+	"delivery/internal/cache"
 	"delivery/internal/db"
 	"log"
 	"strconv"
@@ -24,6 +25,15 @@ func main() {
 	database := db.InitDB(config)
 	defer database.Close()
 
+	// Инициализация Redis
+	redisClient := cache.NewRedisClient(config)
+	if redisClient != nil {
+		defer redisClient.Close()
+		log.Println("Redis успешно инициализирован")
+	} else {
+		log.Println("Не удалось инициализировать Redis, продолжаем без кэширования")
+	}
+
 	// Инициализация хранилищ
 	customerStore := customer.NewCustomerStore(database)
 	parcelStore := parcel.NewParcelStore(database)
@@ -35,6 +45,14 @@ func main() {
 	parcelService := parcel.NewParcelService(parcelStore)
 	deliveryService := delivery.NewDeliveryService(deliveryStore)
 	courierService := courier.NewCourierService(courierStore)
+
+	// Добавляем кэширование к сервисам, если Redis доступен
+	if redisClient != nil {
+		deliveryService.WithCache(redisClient)
+		// Для других сервисов можно добавить аналогично, когда они будут поддерживать кэширование
+		// parcelService.WithCache(redisClient)
+		// courierService.WithCache(redisClient)
+	}
 
 	// Инициализация обработчиков
 	customerHandler := api.NewCustomerHandler(customerService)

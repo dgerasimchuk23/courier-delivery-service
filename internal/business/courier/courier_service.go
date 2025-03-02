@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// CourierStorer определяет интерфейс для хранилища курьеров
+// Определяет интерфейс для хранилища курьеров
 type CourierStorer interface {
 	Add(courier models.Courier) (int, error)
 	Get(id int) (models.Courier, error)

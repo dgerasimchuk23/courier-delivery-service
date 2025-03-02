@@ -12,16 +12,22 @@ RUN go mod download
 COPY . .
 
 # Сборка приложения
-RUN go build -o delivery main.go
+RUN CGO_ENABLED=0 go build -o delivery main.go
 
 # Используем минимальный образ для запуска собранного приложения
 FROM alpine:latest
+
+# Устанавливаем необходимые пакеты
+RUN apk add --no-cache libc6-compat
 
 # Устанавливаем рабочую директорию
 WORKDIR /root/
 
 # Создаём необходимые папки
 RUN mkdir -p /root/config
+
+# Устанавливаем переменную окружения для определения, что приложение запущено в контейнере
+ENV IN_CONTAINER=true
 
 # Копируем приложение и конфиги из предыдущего этапа сборки
 COPY --from=builder /delivery/delivery .
