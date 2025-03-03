@@ -44,6 +44,7 @@ func InitSchema(db *sql.DB, dbType string) error {
 		id SERIAL PRIMARY KEY,
 		email TEXT UNIQUE NOT NULL,
 		password TEXT NOT NULL,
+		role TEXT NOT NULL DEFAULT 'client',
 		created_at TIMESTAMP NOT NULL,
 		updated_at TIMESTAMP NOT NULL
 	);
@@ -54,11 +55,44 @@ func InitSchema(db *sql.DB, dbType string) error {
 		expires_at TIMESTAMP NOT NULL,
 		created_at TIMESTAMP NOT NULL,
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-	);`
+	);
+	
+	-- Создаем индексы для оптимизации запросов
+	CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+	CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token);
+	CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+	CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
+	`
 
 	if _, err := db.Exec(schema); err != nil {
 		log.Printf("Ошибка создания таблиц: %v", err)
 		return err
 	}
+
+	// Проверяем, существует ли колонка role в таблице users
+	var exists bool
+	err := db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1 
+			FROM information_schema.columns 
+			WHERE table_name = 'users' AND column_name = 'role'
+		)
+	`).Scan(&exists)
+
+	if err != nil {
+		log.Printf("Ошибка при проверке существования колонки role: %v", err)
+		return err
+	}
+
+	// Если колонка role не существует, добавляем ее
+	if !exists {
+		_, err := db.Exec(`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'client'`)
+		if err != nil {
+			log.Printf("Ошибка при добавлении колонки role: %v", err)
+			return err
+		}
+		log.Println("Колонка role успешно добавлена в таблицу users")
+	}
+
 	return nil
 }

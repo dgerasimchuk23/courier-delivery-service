@@ -1,13 +1,44 @@
 package api
 
 import (
+	"context"
+	"delivery/internal/auth"
+	"delivery/internal/cache"
+	"delivery/internal/middleware"
+
+	"encoding/json"
+	"net/http"
+
 	"github.com/gorilla/mux"
 )
 
 // Маршрутизатор с зарегистрированными маршрутами
-func NewRouter(parcelHandler *ParcelHandler, customerHandler *CustomerHandler, deliveryHandler *DeliveryHandler, courierHandler *CourierHandler) *mux.Router {
+func NewRouter(
+	parcelHandler *ParcelHandler,
+	customerHandler *CustomerHandler,
+	deliveryHandler *DeliveryHandler,
+	courierHandler *CourierHandler,
+	authService *auth.AuthService,
+	redisClient *cache.RedisClient,
+) *mux.Router {
 
 	r := mux.NewRouter()
+
+	// Инициализация middleware
+	authMiddleware := middleware.NewAuthMiddleware(authService)
+	rateLimiter := middleware.NewRateLimiter(redisClient, middleware.DefaultRateLimitConfig())
+
+	// Загружаем конфигурацию Rate Limiting из Redis
+	ctx := context.Background()
+	if err := rateLimiter.LoadConfigFromRedis(ctx); err != nil {
+		// Если не удалось загрузить конфигурацию, используем значения по умолчанию
+		// и сохраняем их в Redis
+		rateLimiter.SaveConfigToRedis(ctx)
+	}
+
+	// Применяем middleware ко всем маршрутам
+	r.Use(authMiddleware.Middleware())
+	r.Use(rateLimiter.Middleware())
 
 	// Регистрирация маршрутов для посылок
 	r.HandleFunc("/parcels", parcelHandler.CreateParcel).Methods("POST")
@@ -42,6 +73,26 @@ func NewRouter(parcelHandler *ParcelHandler, customerHandler *CustomerHandler, d
 	r.HandleFunc("/couriers/{id}", courierHandler.UpdateCourier).Methods("PUT")
 	r.HandleFunc("/couriers/{id}/status", courierHandler.UpdateCourierStatus).Methods("PUT")
 	r.HandleFunc("/couriers/{id}", courierHandler.DeleteCourier).Methods("DELETE")
+
+	// Добавляем маршрут для обновления конфигурации Rate Limiting
+	r.HandleFunc("/admin/rate-limit", func(w http.ResponseWriter, r *http.Request) {
+		// Этот маршрут должен быть защищен дополнительной аутентификацией
+		// TODO: Добавить проверку прав администратора
+
+		var config middleware.RateLimitConfig
+		if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+			http.Error(w, "Неверный формат данных", http.StatusBadRequest)
+			return
+		}
+
+		if err := rateLimiter.UpdateConfig(config); err != nil {
+			http.Error(w, "Ошибка при обновлении конфигурации", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	}).Methods("POST")
 
 	return r
 }

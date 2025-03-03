@@ -6,12 +6,13 @@ import "time"
 type User struct {
 	ID        int       `json:"id"`
 	Email     string    `json:"email"`
-	Password  string    `json:"-"` // Пароль не включается в JSON
+	Password  string    `json:"-"` // Пароль не должен быть доступен в JSON
+	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// RefreshToken представляет refresh токен для пользователя
+// RefreshToken представляет refresh токен для аутентификации
 type RefreshToken struct {
 	ID        int       `json:"id"`
 	UserID    int       `json:"user_id"`

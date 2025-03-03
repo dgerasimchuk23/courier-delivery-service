@@ -3,6 +3,7 @@ package main
 import (
 	"delivery/config"
 	"delivery/internal/api"
+	"delivery/internal/auth"
 	"delivery/internal/business/courier"
 	"delivery/internal/business/customer"
 	"delivery/internal/business/delivery"
@@ -39,16 +40,19 @@ func main() {
 	parcelStore := parcel.NewParcelStore(database)
 	deliveryStore := delivery.NewDeliveryStore(database)
 	courierStore := courier.NewCourierStore(database)
+	userStore := auth.NewUserStore(database)
 
 	// Инициализация сервисов
 	customerService := customer.NewCustomerService(customerStore)
 	parcelService := parcel.NewParcelService(parcelStore)
 	deliveryService := delivery.NewDeliveryService(deliveryStore)
 	courierService := courier.NewCourierService(courierStore)
+	authService := auth.NewAuthService(userStore)
 
 	// Добавляем кэширование к сервисам, если Redis доступен
 	if redisClient != nil {
 		deliveryService.WithCache(redisClient)
+		authService.WithCache(redisClient)
 		// Для других сервисов можно добавить аналогично, когда они будут поддерживать кэширование
 		// parcelService.WithCache(redisClient)
 		// courierService.WithCache(redisClient)
@@ -61,7 +65,14 @@ func main() {
 	courierHandler := api.NewCourierHandler(courierService)
 
 	// Создание маршрутизатора
-	r := api.NewRouter(parcelHandler, customerHandler, deliveryHandler, courierHandler)
+	r := api.NewRouter(
+		parcelHandler,
+		customerHandler,
+		deliveryHandler,
+		courierHandler,
+		authService,
+		redisClient,
+	)
 
 	// Запуск HTTP-сервера
 	addr := config.Server.Host + ":" + strconv.Itoa(config.Server.Port)

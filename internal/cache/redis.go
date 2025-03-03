@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"delivery/config"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -11,10 +12,18 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// Ошибки
+var (
+	ErrKeyNotFound = errors.New("ключ не найден")
+)
+
 // RedisClient представляет клиент Redis
 type RedisClient struct {
 	client *redis.Client
 }
+
+// Проверка, что RedisClient реализует интерфейс RedisClientInterface
+var _ RedisClientInterface = (*RedisClient)(nil)
 
 // NewRedisClient создает новый клиент Redis
 func NewRedisClient(config *config.Config) *RedisClient {
@@ -56,7 +65,11 @@ func (r *RedisClient) Set(ctx context.Context, key string, value interface{}, ex
 // Get получает значение по ключу
 func (r *RedisClient) Get(ctx context.Context, key string) (string, error) {
 	log.Printf("Getting key %s from Redis", key)
-	return r.client.Get(ctx, key).Result()
+	val, err := r.client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return "", ErrKeyNotFound
+	}
+	return val, err
 }
 
 // Delete удаляет ключ

@@ -32,6 +32,9 @@ type AuthService struct {
 	cacheClient *cache.RedisClient
 }
 
+// Проверка, что AuthService реализует интерфейс AuthServiceInterface
+var _ AuthServiceInterface = (*AuthService)(nil)
+
 // Создание нового экземпляра AuthService
 func NewAuthService(store *UserStore) *AuthService {
 	return &AuthService{store: store}
