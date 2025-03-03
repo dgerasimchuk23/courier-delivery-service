@@ -5,9 +5,12 @@ import (
 	"delivery/config"
 	"fmt"
 	"log"
+	"time"
 
 	_ "github.com/lib/pq"
 )
+
+var tokenCleanupDone chan bool
 
 // Создание базы данных PostgreSQL, если она не существует
 func createPostgresDBIfNotExists(config *config.Config) error {
@@ -72,5 +75,38 @@ func InitDB(config *config.Config) *sql.DB {
 		log.Fatalf("Ошибка инициализации схемы: %v", err)
 	}
 
+	// Выполнение миграций
+	if err := MigrateDB(db); err != nil {
+		log.Fatalf("Ошибка выполнения миграций: %v", err)
+	}
+
+	// Оптимизация базы данных
+	if err := OptimizeDatabase(db); err != nil {
+		log.Printf("Ошибка оптимизации базы данных: %v", err)
+	}
+
+	// Запускаем периодическую очистку токенов (каждые 12 часов, оставляем последние 5 токенов)
+	tokenCleanupDone = ScheduleTokenCleanup(db, 12*time.Hour, 5)
+
+	// Проверка производительности ключевых запросов
+	if config.Database.CheckPerformance {
+		if err := CheckDatabasePerformance(db); err != nil {
+			log.Printf("Ошибка проверки производительности базы данных: %v", err)
+		}
+	}
+
 	return db
+}
+
+// CloseDB закрывает соединение с базой данных и останавливает фоновые задачи
+func CloseDB(db *sql.DB) {
+	// Останавливаем периодическую очистку токенов
+	if tokenCleanupDone != nil {
+		tokenCleanupDone <- true
+	}
+
+	// Закрываем соединение с базой данных
+	if db != nil {
+		db.Close()
+	}
 }

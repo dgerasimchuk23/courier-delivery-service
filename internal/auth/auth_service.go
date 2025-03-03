@@ -6,6 +6,8 @@ import (
 	"delivery/internal/cache"
 	"errors"
 	"fmt"
+	"log"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -28,8 +30,11 @@ type Claims struct {
 
 // Предоставляет методы для аутентификации и авторизации
 type AuthService struct {
-	store       *UserStore
-	cacheClient *cache.RedisClient
+	store         *UserStore
+	cacheClient   *cache.RedisClient
+	cleanupTicker *time.Ticker
+	cleanupDone   chan bool
+	mu            sync.Mutex
 }
 
 // Проверка, что AuthService реализует интерфейс AuthServiceInterface
@@ -37,7 +42,53 @@ var _ AuthServiceInterface = (*AuthService)(nil)
 
 // Создание нового экземпляра AuthService
 func NewAuthService(store *UserStore) *AuthService {
-	return &AuthService{store: store}
+	service := &AuthService{
+		store:       store,
+		cleanupDone: make(chan bool),
+	}
+
+	// Запускаем периодическую очистку просроченных токенов
+	service.startTokenCleanup()
+
+	return service
+}
+
+// startTokenCleanup запускает периодическую очистку просроченных токенов
+func (s *AuthService) startTokenCleanup() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Останавливаем предыдущий тикер, если он был запущен
+	if s.cleanupTicker != nil {
+		s.cleanupTicker.Stop()
+		s.cleanupDone <- true
+	}
+
+	// Создаем новый тикер
+	s.cleanupTicker = time.NewTicker(12 * time.Hour)
+
+	// Запускаем горутину для периодической очистки
+	go func() {
+		// Сразу выполняем очистку при запуске
+		s.cleanupExpiredTokens()
+
+		for {
+			select {
+			case <-s.cleanupTicker.C:
+				s.cleanupExpiredTokens()
+			case <-s.cleanupDone:
+				return
+			}
+		}
+	}()
+}
+
+// cleanupExpiredTokens удаляет просроченные токены
+func (s *AuthService) cleanupExpiredTokens() {
+	log.Println("Запуск очистки просроченных токенов...")
+	if err := s.store.DeleteExpiredRefreshTokens(); err != nil {
+		log.Printf("Ошибка при удалении просроченных токенов: %v", err)
+	}
 }
 
 // WithCache добавляет клиент кэширования к сервису
@@ -144,15 +195,11 @@ func (s *AuthService) RefreshToken(refreshToken string) (string, string, error) 
 		return "", "", fmt.Errorf("ошибка при получении refresh токена: %w", err)
 	}
 
-	// Проверяем, не истек ли токен
-	if token.ExpiresAt.Before(time.Now().UTC()) {
-		return "", "", errors.New("refresh токен истек")
-	}
-
 	// Удаляем старый refresh токен
 	err = s.store.DeleteRefreshToken(refreshToken)
 	if err != nil {
-		return "", "", fmt.Errorf("ошибка при удалении старого refresh токена: %w", err)
+		log.Printf("Ошибка при удалении старого refresh токена: %v", err)
+		// Продолжаем выполнение, так как это не критическая ошибка
 	}
 
 	// Генерируем новые токены
@@ -169,7 +216,8 @@ func (s *AuthService) Logout(accessToken, refreshToken string) error {
 	// Удаляем refresh токен из БД
 	err := s.store.DeleteRefreshToken(refreshToken)
 	if err != nil {
-		return fmt.Errorf("ошибка при удалении refresh токена: %w", err)
+		log.Printf("Ошибка при удалении refresh токена: %v", err)
+		// Продолжаем выполнение, так как это не критическая ошибка
 	}
 
 	// Добавляем access токен в черный список, если доступен Redis
@@ -190,8 +238,12 @@ func (s *AuthService) Logout(accessToken, refreshToken string) error {
 			blacklistKey := fmt.Sprintf("blacklist:%s", accessToken)
 			err := s.cacheClient.Set(ctx, blacklistKey, "revoked", accessTokenTTL)
 			if err != nil {
-				return fmt.Errorf("ошибка при добавлении токена в черный список: %w", err)
+				log.Printf("Ошибка при добавлении токена в черный список: %v", err)
+				return nil
 			}
+
+			// Логируем блокировку токена
+			log.Printf("Токен %s добавлен в черный список на %v", accessToken, accessTokenTTL)
 			return nil
 		}
 
@@ -209,8 +261,12 @@ func (s *AuthService) Logout(accessToken, refreshToken string) error {
 			blacklistKey := fmt.Sprintf("blacklist:%s", accessToken)
 			err := s.cacheClient.Set(ctx, blacklistKey, "revoked", ttl)
 			if err != nil {
-				return fmt.Errorf("ошибка при добавлении токена в черный список: %w", err)
+				log.Printf("Ошибка при добавлении токена в черный список: %v", err)
+				return nil
 			}
+
+			// Логируем блокировку токена
+			log.Printf("Токен %s добавлен в черный список на %v", accessToken, ttl)
 		}
 	}
 
@@ -219,6 +275,17 @@ func (s *AuthService) Logout(accessToken, refreshToken string) error {
 
 // ValidateToken проверяет валидность токена и возвращает ID пользователя
 func (s *AuthService) ValidateToken(tokenString string) (int, error) {
+	// Проверяем, находится ли токен в черном списке
+	if s.cacheClient != nil {
+		ctx := context.Background()
+		blacklistKey := fmt.Sprintf("blacklist:%s", tokenString)
+		_, err := s.cacheClient.Get(ctx, blacklistKey)
+		if err == nil {
+			// Токен найден в черном списке
+			return 0, errors.New("токен отозван")
+		}
+	}
+
 	// Парсим токен
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		// Проверяем метод подписи
@@ -238,4 +305,15 @@ func (s *AuthService) ValidateToken(tokenString string) (int, error) {
 	}
 
 	return 0, errors.New("недействительный токен")
+}
+
+// Close закрывает ресурсы, используемые сервисом
+func (s *AuthService) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.cleanupTicker != nil {
+		s.cleanupTicker.Stop()
+		s.cleanupDone <- true
+	}
 }

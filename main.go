@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"delivery/config"
 	"delivery/internal/api"
 	"delivery/internal/auth"
@@ -11,7 +12,12 @@ import (
 	"delivery/internal/cache"
 	"delivery/internal/db"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
+	"time"
 
 	_ "github.com/lib/pq" // драйвер PostgreSQL
 )
@@ -24,7 +30,7 @@ func main() {
 	}
 
 	database := db.InitDB(config)
-	defer database.Close()
+	defer db.CloseDB(database)
 
 	// Инициализация Redis
 	redisClient := cache.NewRedisClient(config)
@@ -48,6 +54,9 @@ func main() {
 	deliveryService := delivery.NewDeliveryService(deliveryStore)
 	courierService := courier.NewCourierService(courierStore)
 	authService := auth.NewAuthService(userStore)
+
+	// Закрываем ресурсы authService при завершении
+	defer authService.Close()
 
 	// Добавляем кэширование к сервисам, если Redis доступен
 	if redisClient != nil {
@@ -74,7 +83,37 @@ func main() {
 		redisClient,
 	)
 
-	// Запуск HTTP-сервера
+	// Создание HTTP-сервера
 	addr := config.Server.Host + ":" + strconv.Itoa(config.Server.Port)
-	api.Start(addr, r)
+	server := &http.Server{
+		Addr:    addr,
+		Handler: r,
+	}
+
+	// Канал для получения сигналов завершения
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	// Запуск сервера в отдельной горутине
+	go func() {
+		log.Printf("Сервер запущен на %s", addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Ошибка запуска сервера: %v", err)
+		}
+	}()
+
+	// Ожидание сигнала завершения
+	<-stop
+	log.Println("Получен сигнал завершения, выполняется корректное завершение работы...")
+
+	// Создаем контекст с таймаутом для корректного завершения
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Корректное завершение работы сервера
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatalf("Ошибка при завершении работы сервера: %v", err)
+	}
+
+	log.Println("Сервер успешно остановлен")
 }

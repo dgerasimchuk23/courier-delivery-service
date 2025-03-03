@@ -5,12 +5,15 @@ import (
 	"delivery/internal/business/models"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 )
 
 var (
 	ErrUserNotFound       = errors.New("пользователь не найден")
 	ErrEmailAlreadyExists = errors.New("пользователь с таким email уже существует")
+	ErrTokenNotFound      = errors.New("токен не найден")
+	ErrTokenExpired       = errors.New("токен истек")
 )
 
 // UserStore представляет хранилище пользователей
@@ -62,7 +65,7 @@ func (s *UserStore) GetUserByEmail(email string) (models.User, error) {
 	).Scan(&user.ID, &user.Email, &user.Password, &user.Role, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return models.User{}, errors.New("пользователь не найден")
+			return models.User{}, ErrUserNotFound
 		}
 		return models.User{}, fmt.Errorf("ошибка при получении пользователя: %w", err)
 	}
@@ -79,7 +82,7 @@ func (s *UserStore) GetUserByID(id int) (models.User, error) {
 	).Scan(&user.ID, &user.Email, &user.Password, &user.Role, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return models.User{}, errors.New("пользователь не найден")
+			return models.User{}, ErrUserNotFound
 		}
 		return models.User{}, fmt.Errorf("ошибка при получении пользователя: %w", err)
 	}
@@ -89,12 +92,43 @@ func (s *UserStore) GetUserByID(id int) (models.User, error) {
 
 // SaveRefreshToken сохраняет refresh токен в базе данных
 func (s *UserStore) SaveRefreshToken(token models.RefreshToken) error {
-	_, err := s.db.Exec(
+	// Начинаем транзакцию
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("ошибка при начале транзакции: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Удаляем старые токены пользователя (оставляем только последние 5)
+	_, err = tx.Exec(`
+		DELETE FROM refresh_tokens 
+		WHERE user_id = $1 AND token NOT IN (
+			SELECT token FROM refresh_tokens 
+			WHERE user_id = $1 
+			ORDER BY created_at DESC 
+			LIMIT 5
+		)
+	`, token.UserID)
+	if err != nil {
+		return fmt.Errorf("ошибка при удалении старых токенов: %w", err)
+	}
+
+	// Сохраняем новый токен
+	_, err = tx.Exec(
 		"INSERT INTO refresh_tokens (user_id, token, expires_at, created_at) VALUES ($1, $2, $3, $4)",
 		token.UserID, token.Token, token.ExpiresAt, time.Now(),
 	)
 	if err != nil {
 		return fmt.Errorf("ошибка при сохранении refresh токена: %w", err)
+	}
+
+	// Фиксируем транзакцию
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("ошибка при фиксации транзакции: %w", err)
 	}
 
 	return nil
@@ -109,9 +143,16 @@ func (s *UserStore) GetRefreshToken(token string) (models.RefreshToken, error) {
 	).Scan(&refreshToken.UserID, &refreshToken.Token, &refreshToken.ExpiresAt, &refreshToken.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return models.RefreshToken{}, errors.New("токен не найден")
+			return models.RefreshToken{}, ErrTokenNotFound
 		}
 		return models.RefreshToken{}, fmt.Errorf("ошибка при получении refresh токена: %w", err)
+	}
+
+	// Проверяем, не истек ли токен
+	if refreshToken.ExpiresAt.Before(time.Now()) {
+		// Удаляем истекший токен
+		_, _ = s.db.Exec("DELETE FROM refresh_tokens WHERE token = $1", token)
+		return models.RefreshToken{}, ErrTokenExpired
 	}
 
 	return refreshToken, nil
@@ -119,9 +160,19 @@ func (s *UserStore) GetRefreshToken(token string) (models.RefreshToken, error) {
 
 // DeleteRefreshToken удаляет refresh токен из базы данных
 func (s *UserStore) DeleteRefreshToken(token string) error {
-	_, err := s.db.Exec("DELETE FROM refresh_tokens WHERE token = $1", token)
+	result, err := s.db.Exec("DELETE FROM refresh_tokens WHERE token = $1", token)
 	if err != nil {
 		return fmt.Errorf("ошибка при удалении refresh токена: %w", err)
+	}
+
+	// Проверяем, был ли удален токен
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("ошибка при получении количества удаленных строк: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		log.Printf("Токен %s не найден при попытке удаления", token)
 	}
 
 	return nil
@@ -129,10 +180,53 @@ func (s *UserStore) DeleteRefreshToken(token string) error {
 
 // DeleteExpiredRefreshTokens удаляет просроченные refresh токены
 func (s *UserStore) DeleteExpiredRefreshTokens() error {
-	_, err := s.db.Exec("DELETE FROM refresh_tokens WHERE expires_at < $1", time.Now())
+	result, err := s.db.Exec("DELETE FROM refresh_tokens WHERE expires_at < $1", time.Now())
 	if err != nil {
 		return fmt.Errorf("ошибка при удалении просроченных refresh токенов: %w", err)
 	}
+
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("Удалено %d просроченных refresh токенов", rowsAffected)
+
+	return nil
+}
+
+// GetUserRefreshTokens получает все refresh токены пользователя
+func (s *UserStore) GetUserRefreshTokens(userID int) ([]models.RefreshToken, error) {
+	rows, err := s.db.Query(
+		"SELECT user_id, token, expires_at, created_at FROM refresh_tokens WHERE user_id = $1 ORDER BY created_at DESC",
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при получении refresh токенов пользователя: %w", err)
+	}
+	defer rows.Close()
+
+	var tokens []models.RefreshToken
+	for rows.Next() {
+		var token models.RefreshToken
+		if err := rows.Scan(&token.UserID, &token.Token, &token.ExpiresAt, &token.CreatedAt); err != nil {
+			return nil, fmt.Errorf("ошибка при сканировании refresh токена: %w", err)
+		}
+		tokens = append(tokens, token)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка при итерации по refresh токенам: %w", err)
+	}
+
+	return tokens, nil
+}
+
+// DeleteUserRefreshTokens удаляет все refresh токены пользователя
+func (s *UserStore) DeleteUserRefreshTokens(userID int) error {
+	result, err := s.db.Exec("DELETE FROM refresh_tokens WHERE user_id = $1", userID)
+	if err != nil {
+		return fmt.Errorf("ошибка при удалении refresh токенов пользователя: %w", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("Удалено %d refresh токенов пользователя %d", rowsAffected, userID)
 
 	return nil
 }

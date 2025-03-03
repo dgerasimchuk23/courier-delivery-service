@@ -9,13 +9,14 @@ import (
 
 type Config struct {
 	Database struct {
-		Type     string `json:"type"`
-		Host     string `json:"host"`
-		Port     int    `json:"port"`
-		User     string `json:"user"`
-		Password string `json:"password"`
-		DBName   string `json:"dbname"`
-		SSLMode  string `json:"sslmode"`
+		Type             string `json:"type"`
+		Host             string `json:"host"`
+		Port             int    `json:"port"`
+		User             string `json:"user"`
+		Password         string `json:"password"`
+		DBName           string `json:"dbname"`
+		SSLMode          string `json:"sslmode"`
+		CheckPerformance bool   `json:"check_performance"`
 	} `json:"database"`
 	Redis struct {
 		Host     string `json:"host"`
@@ -83,6 +84,9 @@ func LoadConfig(filePath string) (*Config, error) {
 	}
 	if sslmode := os.Getenv("DB_SSLMODE"); sslmode != "" {
 		config.Database.SSLMode = sslmode
+	}
+	if checkPerf := os.Getenv("DB_CHECK_PERFORMANCE"); checkPerf != "" {
+		config.Database.CheckPerformance = checkPerf == "true"
 	}
 
 	return &config, nil

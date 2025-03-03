@@ -7,7 +7,8 @@
       "password": "postgres",
       "dbname": "delivery",
       "sslmode": "disable",
-      "dsn": "delivery.db"
+      "dsn": "delivery.db",
+      "check_performance": false
     },
     "redis": {
       "host": "localhost",

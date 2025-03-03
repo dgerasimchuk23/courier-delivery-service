@@ -24,4 +24,7 @@ type AuthServiceInterface interface {
 
 	// WithCache добавляет клиент кэширования к сервису
 	WithCache(cacheClient *cache.RedisClient) *AuthService
+
+	// Close закрывает ресурсы, используемые сервисом
+	Close()
 }
