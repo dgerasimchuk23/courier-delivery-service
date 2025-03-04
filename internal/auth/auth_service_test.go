@@ -19,19 +19,21 @@ func init() {
 	disableTokenCleanup = true
 }
 
-// MockUserStore - мок для UserStore
+// Мок для UserStore
 type MockUserStore struct {
-	mock.Mock
+	mock.Mock // Встраиваемый тип для использования mock методов
 }
 
+// Создание нового пользователя
 func (m *MockUserStore) CreateUser(user models.User) (int, error) {
-	args := m.Called(user)
-	return args.Int(0), args.Error(1)
+	args := m.Called(user)            // Вызов метода с аргументами
+	return args.Int(0), args.Error(1) // Возвращаем ID и ошибку
 }
 
+// Получение пользователя по email
 func (m *MockUserStore) GetUserByEmail(email string) (models.User, error) {
-	args := m.Called(email)
-	return args.Get(0).(models.User), args.Error(1)
+	args := m.Called(email)                         // Вызов метода с аргументами
+	return args.Get(0).(models.User), args.Error(1) // Возвращаем пользователя и ошибку
 }
 
 func (m *MockUserStore) GetUserByID(id int) (models.User, error) {
@@ -64,21 +66,24 @@ func (m *MockUserStore) GetUserRefreshTokens(userID int) ([]models.RefreshToken,
 	return args.Get(0).([]models.RefreshToken), args.Error(1)
 }
 
+// TestRegisterUser проверяет регистрацию нового пользователя
 func TestRegisterUser(t *testing.T) {
+	// Создаем мок для базы данных
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("failed to open a stub database connection: %s", err)
 	}
 	defer db.Close()
 
-	userStore := NewUserStore(db)
-	authService := NewAuthService(userStore)
+	userStore := NewUserStore(db)            // Инициализация UserStore
+	authService := NewAuthService(userStore) // Инициализация AuthService
 
+	// Тестовые случаи для регистрации пользователя
 	tests := []struct {
-		email    string
-		password string
-		mock     func()
-		wantErr  bool
+		email    string // Email пользователя
+		password string // Пароль пользователя
+		mock     func() // Мок для ожиданий
+		wantErr  bool   // Ожидаемая ошибка
 	}{
 		{
 			email:    "test@example.com",
@@ -113,11 +118,12 @@ func TestRegisterUser(t *testing.T) {
 		},
 	}
 
+	// Выполнение тестов
 	for _, tt := range tests {
 		if tt.mock != nil {
-			tt.mock()
+			tt.mock() // Настройка мока
 		}
-		err := authService.RegisterUser(tt.email, tt.password)
+		err := authService.RegisterUser(tt.email, tt.password) // Вызов метода регистрации
 		if (err != nil) != tt.wantErr {
 			t.Errorf("RegisterUser() error = %v, wantErr %v", err, tt.wantErr)
 		}
@@ -208,24 +214,21 @@ func TestLoginUser(t *testing.T) {
 }
 
 func TestRefreshToken(t *testing.T) {
-	// Пропускаем тест, так как он требует дополнительной настройки
-	t.Skip("Тест требует дополнительной настройки")
+	// Создаем мок для UserStore
+	mockStore := new(MockUserStore)
 
-	// Создаем мок базы данных
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("failed to open a stub database connection: %s", err)
+	// Создаем сервис с моком
+	authService := &AuthService{
+		store: mockStore,
 	}
-	defer db.Close()
 
-	// Создаем тестовые данные
+	// Тестовые данные
 	userID := 1
 	validToken := "valid-token"
 	expiredToken := "expired-token"
 	nonExistentToken := "non-existent-token"
 	now := time.Now()
 	tomorrow := now.Add(24 * time.Hour)
-	yesterday := now.Add(-24 * time.Hour)
 
 	// Создаем тестовые случаи
 	tests := []struct {
@@ -238,40 +241,19 @@ func TestRefreshToken(t *testing.T) {
 			name:  "Valid refresh token",
 			token: validToken,
 			setup: func() {
-				// Ожидаем запрос на получение refresh токена
-				tokenRows := sqlmock.NewRows([]string{"user_id", "token", "expires_at", "created_at"}).
-					AddRow(userID, validToken, tomorrow, now)
-				mock.ExpectQuery(`SELECT user_id, token, expires_at, created_at FROM refresh_tokens WHERE token = \$1`).
-					WithArgs(validToken).
-					WillReturnRows(tokenRows)
+				// Настраиваем мок для получения refresh токена
+				mockStore.On("GetRefreshToken", validToken).Return(models.RefreshToken{
+					UserID:    userID,
+					Token:     validToken,
+					ExpiresAt: tomorrow,
+					CreatedAt: now,
+				}, nil)
 
-				// Ожидаем удаление старого refresh токена
-				mock.ExpectExec(`DELETE FROM refresh_tokens WHERE token = \$1`).
-					WithArgs(validToken).
-					WillReturnResult(sqlmock.NewResult(0, 1))
+				// Настраиваем мок для удаления старого refresh токена
+				mockStore.On("DeleteRefreshToken", validToken).Return(nil)
 
-				// Ожидаем запрос на получение данных пользователя
-				userRows := sqlmock.NewRows([]string{"id", "email", "password", "role", "created_at", "updated_at"}).
-					AddRow(userID, "test@example.com", "hashedpassword", "client", now, now)
-				mock.ExpectQuery(`SELECT id, email, password, role, created_at, updated_at FROM users WHERE id = \$1`).
-					WithArgs(userID).
-					WillReturnRows(userRows)
-
-				// Ожидаем начало транзакции
-				mock.ExpectBegin()
-
-				// Ожидаем удаление старых токенов
-				mock.ExpectExec(`DELETE FROM refresh_tokens WHERE user_id = \$1 AND token NOT IN \(SELECT token FROM refresh_tokens WHERE user_id = \$1 ORDER BY created_at DESC LIMIT 5\)`).
-					WithArgs(userID, userID).
-					WillReturnResult(sqlmock.NewResult(0, 0))
-
-				// Ожидаем вставку нового refresh токена
-				mock.ExpectExec(`INSERT INTO refresh_tokens \(user_id, token, expires_at, created_at\) VALUES \(\$1, \$2, \$3, \$4\)`).
-					WithArgs(userID, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
-					WillReturnResult(sqlmock.NewResult(1, 1))
-
-				// Ожидаем коммит транзакции
-				mock.ExpectCommit()
+				// Настраиваем мок для сохранения нового refresh токена
+				mockStore.On("SaveRefreshToken", mock.AnythingOfType("models.RefreshToken")).Return(nil)
 			},
 			want: true,
 		},
@@ -279,12 +261,8 @@ func TestRefreshToken(t *testing.T) {
 			name:  "Expired refresh token",
 			token: expiredToken,
 			setup: func() {
-				// Ожидаем запрос на получение refresh токена с истекшим сроком
-				rows := sqlmock.NewRows([]string{"user_id", "token", "expires_at", "created_at"}).
-					AddRow(userID, expiredToken, yesterday, now)
-				mock.ExpectQuery(`SELECT user_id, token, expires_at, created_at FROM refresh_tokens WHERE token = \$1`).
-					WithArgs(expiredToken).
-					WillReturnRows(rows)
+				// Настраиваем мок для получения истекшего refresh токена
+				mockStore.On("GetRefreshToken", expiredToken).Return(models.RefreshToken{}, ErrTokenExpired)
 			},
 			want: false,
 		},
@@ -292,10 +270,8 @@ func TestRefreshToken(t *testing.T) {
 			name:  "Non-existent refresh token",
 			token: nonExistentToken,
 			setup: func() {
-				// Ожидаем запрос на получение несуществующего refresh токена
-				mock.ExpectQuery(`SELECT user_id, token, expires_at, created_at FROM refresh_tokens WHERE token = \$1`).
-					WithArgs(nonExistentToken).
-					WillReturnRows(sqlmock.NewRows([]string{"user_id", "token", "expires_at", "created_at"}))
+				// Настраиваем мок для получения несуществующего refresh токена
+				mockStore.On("GetRefreshToken", nonExistentToken).Return(models.RefreshToken{}, ErrTokenNotFound)
 			},
 			want: false,
 		},
@@ -303,12 +279,14 @@ func TestRefreshToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Сбрасываем мок перед каждым тестом
+			mockStore = new(MockUserStore)
+			authService = &AuthService{
+				store: mockStore,
+			}
+
 			// Настраиваем мок для текущего теста
 			tt.setup()
-
-			// Создаем сервис для каждого теста
-			userStore := NewUserStore(db)
-			authService := NewAuthService(userStore)
 
 			// Вызываем тестируемый метод
 			accessToken, refreshToken, err := authService.RefreshToken(tt.token)
@@ -321,6 +299,8 @@ func TestRefreshToken(t *testing.T) {
 				if accessToken == "" || refreshToken == "" {
 					t.Errorf("RefreshToken() returned empty tokens: access=%v, refresh=%v", accessToken, refreshToken)
 				}
+				// Проверяем, что все ожидаемые методы были вызваны
+				mockStore.AssertExpectations(t)
 			} else {
 				if err == nil {
 					t.Errorf("RefreshToken() error = nil, wantErr true")

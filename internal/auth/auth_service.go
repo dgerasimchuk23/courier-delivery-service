@@ -27,17 +27,37 @@ var disableTokenCleanup = false
 
 // Claims представляет данные, которые будут храниться в JWT токене
 type Claims struct {
-	UserID int `json:"user_id"`
-	jwt.RegisteredClaims
+	UserID               int `json:"user_id"` // ID пользователя
+	jwt.RegisteredClaims     // Стандартные зарегистрированные поля JWT
 }
 
-// Предоставляет методы для аутентификации и авторизации
+// UserStoreInterface определяет интерфейс для хранилища пользователей
+type UserStoreInterface interface {
+	// Создание нового пользователя
+	CreateUser(user models.User) (int, error)
+	// Получение пользователя по email
+	GetUserByEmail(email string) (models.User, error)
+	// Получение пользователя по ID
+	GetUserByID(id int) (models.User, error)
+	// Сохранение refresh токена
+	SaveRefreshToken(token models.RefreshToken) error
+	// Получение refresh токена
+	GetRefreshToken(token string) (models.RefreshToken, error)
+	// Удаление refresh токена
+	DeleteRefreshToken(token string) error
+	// Удаление просроченных refresh токенов
+	DeleteExpiredRefreshTokens() error
+	// Получение всех refresh токенов пользователя
+	GetUserRefreshTokens(userID int) ([]models.RefreshToken, error)
+}
+
+// AuthService представляет сервис аутентификации
 type AuthService struct {
-	store         *UserStore
-	cacheClient   *cache.RedisClient
-	cleanupTicker *time.Ticker
-	cleanupDone   chan bool
-	mu            sync.Mutex
+	store         UserStoreInterface // Хранилище пользователей
+	cacheClient   *cache.RedisClient // Клиент кэширования
+	cleanupTicker *time.Ticker       // Тикер для периодической очистки токенов
+	cleanupDone   chan bool          // Канал для завершения очистки
+	mu            sync.Mutex         // Мьютекс для синхронизации
 }
 
 // Проверка, что AuthService реализует интерфейс AuthServiceInterface
@@ -45,6 +65,7 @@ var _ AuthServiceInterface = (*AuthService)(nil)
 
 // Создание нового экземпляра AuthService
 func NewAuthService(store *UserStore) *AuthService {
+	// Инициализация сервиса аутентификации
 	service := &AuthService{
 		store:       store,
 		cleanupDone: make(chan bool),
