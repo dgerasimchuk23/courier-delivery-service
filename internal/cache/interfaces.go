@@ -24,4 +24,16 @@ type RedisClientInterface interface {
 
 	// GetJSON получает объект из кэша и десериализует его из JSON
 	GetJSON(ctx context.Context, key string, dest interface{}) error
+
+	// MonitorStats получает статистику использования Redis
+	MonitorStats(ctx context.Context) (*RedisStats, error)
+
+	// CleanupRateLimitKeys удаляет устаревшие ключи rate limit
+	CleanupRateLimitKeys(ctx context.Context) (int64, error)
+
+	// CleanupBlacklistKeys удаляет устаревшие ключи из черного списка токенов
+	CleanupBlacklistKeys(ctx context.Context) (int64, error)
+
+	// ScheduleRedisCleanup запускает периодическую очистку Redis
+	ScheduleRedisCleanup(interval time.Duration) chan bool
 }

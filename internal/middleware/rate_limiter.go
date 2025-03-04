@@ -127,6 +127,12 @@ func getUserRole(r *http.Request) (string, bool) {
 func (rl *RateLimiter) Middleware() mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Если Redis недоступен, пропускаем запрос
+			if rl.redisClient == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			ctx := r.Context()
 
 			// Получаем IP-адрес клиента
@@ -134,17 +140,22 @@ func (rl *RateLimiter) Middleware() mux.MiddlewareFunc {
 
 			// Проверяем, не заблокирован ли IP
 			blockKey := fmt.Sprintf("rate_limit:block:%s", clientIP)
-			_, err := rl.redisClient.Get(ctx, blockKey)
+			blockValue, err := rl.redisClient.Get(ctx, blockKey)
 			if err == nil {
 				// IP заблокирован
 				w.Header().Set("Retry-After", strconv.Itoa(rl.config.BlockDuration*60))
 				http.Error(w, "Слишком много запросов. Пожалуйста, повторите попытку позже.", http.StatusTooManyRequests)
+
+				// Логируем блокировку с дополнительной информацией
+				log.Printf("[RATE_LIMIT_BLOCKED] IP %s заблокирован, значение: %s, URL: %s, метод: %s",
+					clientIP, blockValue, r.URL.Path, r.Method)
 				return
 			}
 
 			// Определяем лимит в зависимости от аутентификации
 			var limit int
 			var keyPrefix string
+			var userInfo string
 
 			userID, authenticated := getUserID(r)
 			if authenticated {
@@ -155,20 +166,24 @@ func (rl *RateLimiter) Middleware() mux.MiddlewareFunc {
 					if roleLimit, ok := rl.config.AuthenticatedLimits[role]; ok {
 						limit = roleLimit
 						keyPrefix = fmt.Sprintf("rate_limit:auth:%s:%d", role, userID)
+						userInfo = fmt.Sprintf("пользователь %d с ролью %s", userID, role)
 					} else {
 						// Если роль не найдена, используем лимит для клиентов
 						limit = rl.config.AuthenticatedLimits["client"]
 						keyPrefix = fmt.Sprintf("rate_limit:auth:client:%d", userID)
+						userInfo = fmt.Sprintf("пользователь %d с неизвестной ролью (используем client)", userID)
 					}
 				} else {
 					// Если роль не определена, используем лимит для клиентов
 					limit = rl.config.AuthenticatedLimits["client"]
 					keyPrefix = fmt.Sprintf("rate_limit:auth:client:%d", userID)
+					userInfo = fmt.Sprintf("пользователь %d без роли", userID)
 				}
 			} else {
 				// Пользователь не аутентифицирован
 				limit = rl.config.UnauthenticatedLimit
 				keyPrefix = fmt.Sprintf("rate_limit:unauth:%s", clientIP)
+				userInfo = fmt.Sprintf("неаутентифицированный IP %s", clientIP)
 			}
 
 			// Получаем текущее количество запросов
@@ -183,15 +198,26 @@ func (rl *RateLimiter) Middleware() mux.MiddlewareFunc {
 			count++
 
 			// Если это первый запрос, устанавливаем TTL
+			var setErr error
 			if count == 1 {
-				err = rl.redisClient.Set(ctx, countKey, strconv.Itoa(count), time.Minute)
+				setErr = rl.redisClient.Set(ctx, countKey, strconv.Itoa(count), time.Minute)
+				if setErr == nil {
+					log.Printf("[RATE_LIMIT_NEW] Новый счетчик для %s: %d/%d, URL: %s, метод: %s",
+						userInfo, count, limit, r.URL.Path, r.Method)
+				}
 			} else {
 				// Иначе просто обновляем значение (TTL сохраняется)
-				err = rl.redisClient.Set(ctx, countKey, strconv.Itoa(count), 0)
+				setErr = rl.redisClient.Set(ctx, countKey, strconv.Itoa(count), 0)
+
+				// Логируем каждый 10-й запрос или если счетчик приближается к лимиту
+				if setErr == nil && (count%10 == 0 || count > limit*80/100) {
+					log.Printf("[RATE_LIMIT_UPDATE] Обновлен счетчик для %s: %d/%d (%.1f%%), URL: %s, метод: %s",
+						userInfo, count, limit, float64(count)/float64(limit)*100, r.URL.Path, r.Method)
+				}
 			}
 
-			if err != nil {
-				log.Printf("Ошибка при обновлении счетчика запросов: %v", err)
+			if setErr != nil {
+				log.Printf("[RATE_LIMIT_ERROR] Ошибка при обновлении счетчика запросов: %v", setErr)
 				// В случае ошибки Redis пропускаем запрос
 				next.ServeHTTP(w, r)
 				return
@@ -202,10 +228,18 @@ func (rl *RateLimiter) Middleware() mux.MiddlewareFunc {
 				// Если пользователь не аутентифицирован, блокируем IP на указанное время
 				if !authenticated {
 					blockDuration := time.Duration(rl.config.BlockDuration) * time.Minute
-					err = rl.redisClient.Set(ctx, blockKey, "blocked", blockDuration)
+					blockValue := fmt.Sprintf("blocked:count=%d:limit=%d:time=%s",
+						count, limit, time.Now().Format(time.RFC3339))
+					err = rl.redisClient.Set(ctx, blockKey, blockValue, blockDuration)
 					if err != nil {
-						log.Printf("Ошибка при блокировке IP: %v", err)
+						log.Printf("[RATE_LIMIT_ERROR] Ошибка при блокировке IP: %v", err)
+					} else {
+						log.Printf("[RATE_LIMIT_BLOCK] IP %s заблокирован на %v: %d/%d запросов, URL: %s, метод: %s",
+							clientIP, blockDuration, count, limit, r.URL.Path, r.Method)
 					}
+				} else {
+					log.Printf("[RATE_LIMIT_EXCEEDED] %s превысил лимит: %d/%d запросов, URL: %s, метод: %s",
+						userInfo, count, limit, r.URL.Path, r.Method)
 				}
 
 				// Возвращаем ошибку 429 Too Many Requests

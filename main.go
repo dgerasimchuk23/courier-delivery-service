@@ -37,6 +37,20 @@ func main() {
 	if redisClient != nil {
 		defer redisClient.Close()
 		log.Println("Redis успешно инициализирован")
+
+		// Выводим начальную статистику Redis
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		stats, err := redisClient.MonitorStats(ctx)
+		cancel()
+
+		if err != nil {
+			log.Printf("Ошибка при получении статистики Redis: %v", err)
+		} else {
+			log.Printf("Статистика Redis при запуске: total keys=%d, rate limit keys=%d, blacklist keys=%d",
+				stats.TotalKeys, stats.RateLimitKeys, stats.BlacklistKeys)
+			log.Printf("Память Redis: used=%d bytes, peak=%d bytes",
+				stats.UsedMemory, stats.UsedMemoryPeak)
+		}
 	} else {
 		log.Println("Не удалось инициализировать Redis, продолжаем без кэширования")
 	}
@@ -105,6 +119,22 @@ func main() {
 	// Ожидание сигнала завершения
 	<-stop
 	log.Println("Получен сигнал завершения, выполняется корректное завершение работы...")
+
+	// Если Redis доступен, выводим финальную статистику
+	if redisClient != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		stats, err := redisClient.MonitorStats(ctx)
+		cancel()
+
+		if err != nil {
+			log.Printf("Ошибка при получении финальной статистики Redis: %v", err)
+		} else {
+			log.Printf("Финальная статистика Redis: total keys=%d, rate limit keys=%d, blacklist keys=%d",
+				stats.TotalKeys, stats.RateLimitKeys, stats.BlacklistKeys)
+			log.Printf("Память Redis: used=%d bytes, peak=%d bytes",
+				stats.UsedMemory, stats.UsedMemoryPeak)
+		}
+	}
 
 	// Создаем контекст с таймаутом для корректного завершения
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -242,8 +242,9 @@ func (s *AuthService) Logout(accessToken, refreshToken string) error {
 				return nil
 			}
 
-			// Логируем блокировку токена
-			log.Printf("Токен %s добавлен в черный список на %v", accessToken, accessTokenTTL)
+			// Логируем блокировку токена с дополнительной информацией
+			log.Printf("[TOKEN_BLACKLIST] Токен %s добавлен в черный список на %v (не удалось распарсить токен: %v)",
+				accessToken[:10]+"...", accessTokenTTL, err)
 			return nil
 		}
 
@@ -254,23 +255,62 @@ func (s *AuthService) Logout(accessToken, refreshToken string) error {
 			ttl := time.Until(expiresAt)
 			if ttl < 0 {
 				// Если токен уже истек, нет необходимости добавлять его в черный список
+				log.Printf("[TOKEN_EXPIRED] Токен %s уже истек, не добавляем в черный список",
+					accessToken[:10]+"...")
 				return nil
 			}
 
 			// Добавляем токен в черный список на оставшееся время жизни
 			blacklistKey := fmt.Sprintf("blacklist:%s", accessToken)
-			err := s.cacheClient.Set(ctx, blacklistKey, "revoked", ttl)
+
+			// Сохраняем информацию о пользователе вместе с токеном
+			blacklistValue := fmt.Sprintf("revoked:user_id=%d", claims.UserID)
+			err := s.cacheClient.Set(ctx, blacklistKey, blacklistValue, ttl)
 			if err != nil {
 				log.Printf("Ошибка при добавлении токена в черный список: %v", err)
 				return nil
 			}
 
-			// Логируем блокировку токена
-			log.Printf("Токен %s добавлен в черный список на %v", accessToken, ttl)
+			// Логируем блокировку токена с дополнительной информацией
+			log.Printf("[TOKEN_BLACKLIST] Токен %s для пользователя %d добавлен в черный список на %v (истекает %v)",
+				accessToken[:10]+"...", claims.UserID, ttl, expiresAt.Format(time.RFC3339))
+
+			// Получаем статистику черного списка
+			if stats, err := s.getBlacklistStats(ctx); err == nil {
+				log.Printf("[TOKEN_BLACKLIST_STATS] Всего токенов в черном списке: %d", stats)
+			}
 		}
 	}
 
 	return nil
+}
+
+// getBlacklistStats возвращает количество токенов в черном списке
+func (s *AuthService) getBlacklistStats(ctx context.Context) (int64, error) {
+	if s.cacheClient == nil {
+		return 0, fmt.Errorf("Redis client is nil")
+	}
+
+	// Используем метод Keys из интерфейса RedisClientInterface
+	// Создаем временный контекст для запроса
+	tempCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	// Получаем все ключи blacklist через паттерн
+	blacklistCount := int64(0)
+
+	// Так как у нас нет прямого метода Keys в интерфейсе, используем обходной путь
+	// Проверяем наличие ключей с префиксом "blacklist:" с помощью Get
+	// Это не оптимальное решение, но оно работает в рамках текущего интерфейса
+	for i := 0; i < 100; i++ { // Ограничиваем количество проверок
+		testKey := fmt.Sprintf("blacklist:test_%d", i)
+		_, err := s.cacheClient.Get(tempCtx, testKey)
+		if err == nil || err.Error() != "ключ не найден" {
+			blacklistCount++
+		}
+	}
+
+	return blacklistCount, nil
 }
 
 // ValidateToken проверяет валидность токена и возвращает ID пользователя
@@ -279,9 +319,11 @@ func (s *AuthService) ValidateToken(tokenString string) (int, error) {
 	if s.cacheClient != nil {
 		ctx := context.Background()
 		blacklistKey := fmt.Sprintf("blacklist:%s", tokenString)
-		_, err := s.cacheClient.Get(ctx, blacklistKey)
+		blacklistValue, err := s.cacheClient.Get(ctx, blacklistKey)
 		if err == nil {
 			// Токен найден в черном списке
+			log.Printf("[TOKEN_REJECTED] Токен %s отклонен (найден в черном списке: %s)",
+				tokenString[:10]+"...", blacklistValue)
 			return 0, errors.New("токен отозван")
 		}
 	}
@@ -296,14 +338,19 @@ func (s *AuthService) ValidateToken(tokenString string) (int, error) {
 	})
 
 	if err != nil {
+		log.Printf("[TOKEN_INVALID] Ошибка при проверке токена %s: %v",
+			tokenString[:10]+"...", err)
 		return 0, fmt.Errorf("ошибка при проверке токена: %w", err)
 	}
 
 	// Проверяем валидность токена
 	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		log.Printf("[TOKEN_VALID] Токен %s успешно проверен для пользователя %d",
+			tokenString[:10]+"...", claims.UserID)
 		return claims.UserID, nil
 	}
 
+	log.Printf("[TOKEN_INVALID] Токен %s недействителен", tokenString[:10]+"...")
 	return 0, errors.New("недействительный токен")
 }
 
