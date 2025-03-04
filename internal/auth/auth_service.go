@@ -22,6 +22,9 @@ const (
 	refreshTokenTTL = 30 * 24 * time.Hour    // Время жизни refresh токена (30 дней)
 )
 
+// Флаг для отключения запуска очистки токенов в тестах
+var disableTokenCleanup = false
+
 // Claims представляет данные, которые будут храниться в JWT токене
 type Claims struct {
 	UserID int `json:"user_id"`
@@ -48,7 +51,9 @@ func NewAuthService(store *UserStore) *AuthService {
 	}
 
 	// Запускаем периодическую очистку просроченных токенов
-	service.startTokenCleanup()
+	if !disableTokenCleanup {
+		service.startTokenCleanup()
+	}
 
 	return service
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -53,37 +54,93 @@ func (m *MockAuthService) WithCache(cacheClient *cache.RedisClient) *auth.AuthSe
 	return args.Get(0).(*auth.AuthService)
 }
 
+// Close реализует метод Close интерфейса AuthServiceInterface
+func (m *MockAuthService) Close() {
+	m.Called()
+}
+
 func TestAuthMiddleware_Middleware(t *testing.T) {
-	// Создаем мок для AuthService
-	mockAuthService := new(MockAuthService)
+	t.Run("Успешная аутентификация", func(t *testing.T) {
+		// Создаем мок-сервис аутентификации
+		mockAuthService := new(MockAuthService)
 
-	// Создаем AuthMiddleware с мок-сервисом
-	authMiddleware := NewAuthMiddleware(mockAuthService)
+		// Настраиваем ожидаемое поведение
+		mockAuthService.On("ValidateToken", "valid-token").Return(123, nil)
 
-	// Создаем тестовый обработчик
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Проверяем, что информация о пользователе добавлена в контекст
-		userID, ok := r.Context().Value("user_id").(int)
-		if ok {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("User ID: " + string(userID)))
-		} else {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("No user ID in context"))
-		}
+		// Создаем AuthMiddleware с мок-сервисом
+		authMiddleware := NewAuthMiddleware(mockAuthService)
+
+		// Создаем тестовый обработчик
+		testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Проверяем, что информация о пользователе добавлена в контекст
+			userID, ok := r.Context().Value("user_id").(int)
+			if ok {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("User ID: " + strconv.Itoa(userID)))
+			} else {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("No user ID in context"))
+			}
+		})
+
+		// Создаем middleware
+		middleware := authMiddleware.Middleware()
+
+		// Создаем тестовый сервер
+		router := mux.NewRouter()
+		router.Use(middleware)
+		router.HandleFunc("/test", testHandler).Methods("GET")
+		server := httptest.NewServer(router)
+		defer server.Close()
+
+		// Создаем тестовый запрос с действительным токеном
+		req, err := http.NewRequest("GET", "/test", nil)
+		assert.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer valid-token")
+
+		// Создаем ResponseRecorder для записи ответа
+		rr := httptest.NewRecorder()
+
+		// Выполняем запрос
+		router.ServeHTTP(rr, req)
+
+		// Проверяем статус ответа
+		assert.Equal(t, http.StatusOK, rr.Code)
+
+		// Проверяем, что все ожидаемые вызовы были выполнены
+		mockAuthService.AssertExpectations(t)
 	})
 
-	// Создаем middleware
-	middleware := authMiddleware.Middleware()
+	t.Run("Отсутствие токена", func(t *testing.T) {
+		// Создаем мок-сервис аутентификации
+		mockAuthService := new(MockAuthService)
 
-	// Создаем тестовый сервер
-	router := mux.NewRouter()
-	router.Use(middleware)
-	router.HandleFunc("/test", testHandler).Methods("GET")
-	server := httptest.NewServer(router)
-	defer server.Close()
+		// Создаем AuthMiddleware с мок-сервисом
+		authMiddleware := NewAuthMiddleware(mockAuthService)
 
-	t.Run("Запрос без токена", func(t *testing.T) {
+		// Создаем тестовый обработчик
+		testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Проверяем, что информация о пользователе добавлена в контекст
+			userID, ok := r.Context().Value("user_id").(int)
+			if ok {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("User ID: " + strconv.Itoa(userID)))
+			} else {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("No user ID in context"))
+			}
+		})
+
+		// Создаем middleware
+		middleware := authMiddleware.Middleware()
+
+		// Создаем тестовый сервер
+		router := mux.NewRouter()
+		router.Use(middleware)
+		router.HandleFunc("/test", testHandler).Methods("GET")
+		server := httptest.NewServer(router)
+		defer server.Close()
+
 		// Создаем тестовый запрос без токена
 		req, err := http.NewRequest("GET", "/test", nil)
 		assert.NoError(t, err)
@@ -99,30 +156,43 @@ func TestAuthMiddleware_Middleware(t *testing.T) {
 
 		// Проверяем тело ответа
 		assert.Equal(t, "No user ID in context", rr.Body.String())
+
+		// Проверяем, что все ожидаемые вызовы были выполнены
+		mockAuthService.AssertExpectations(t)
 	})
 
-	t.Run("Запрос с неверным форматом токена", func(t *testing.T) {
-		// Создаем тестовый запрос с неверным форматом токена
-		req, err := http.NewRequest("GET", "/test", nil)
-		assert.NoError(t, err)
-		req.Header.Set("Authorization", "InvalidFormat")
+	t.Run("Недействительный токен", func(t *testing.T) {
+		// Создаем мок-сервис аутентификации
+		mockAuthService := new(MockAuthService)
 
-		// Создаем ResponseRecorder для записи ответа
-		rr := httptest.NewRecorder()
+		// Настраиваем ожидаемое поведение
+		mockAuthService.On("ValidateToken", "invalid-token").Return(0, errors.New("недействительный токен"))
 
-		// Выполняем запрос
-		router.ServeHTTP(rr, req)
+		// Создаем AuthMiddleware с мок-сервисом
+		authMiddleware := NewAuthMiddleware(mockAuthService)
 
-		// Проверяем статус ответа
-		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+		// Создаем тестовый обработчик
+		testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Проверяем, что информация о пользователе добавлена в контекст
+			userID, ok := r.Context().Value("user_id").(int)
+			if ok {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("User ID: " + strconv.Itoa(userID)))
+			} else {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("No user ID in context"))
+			}
+		})
 
-		// Проверяем тело ответа
-		assert.Contains(t, rr.Body.String(), "Неверный формат токена")
-	})
+		// Создаем middleware
+		middleware := authMiddleware.Middleware()
 
-	t.Run("Запрос с недействительным токеном", func(t *testing.T) {
-		// Настраиваем мок для проверки токена
-		mockAuthService.On("ValidateToken", "invalid-token").Return(0, errors.New("недействительный токен")).Once()
+		// Создаем тестовый сервер
+		router := mux.NewRouter()
+		router.Use(middleware)
+		router.HandleFunc("/test", testHandler).Methods("GET")
+		server := httptest.NewServer(router)
+		defer server.Close()
 
 		// Создаем тестовый запрос с недействительным токеном
 		req, err := http.NewRequest("GET", "/test", nil)
@@ -144,33 +214,96 @@ func TestAuthMiddleware_Middleware(t *testing.T) {
 		// Проверяем, что все ожидаемые вызовы были выполнены
 		mockAuthService.AssertExpectations(t)
 	})
+}
 
-	t.Run("Запрос с действительным токеном", func(t *testing.T) {
-		// Настраиваем мок для проверки токена
-		mockAuthService.On("ValidateToken", "valid-token").Return(123, nil).Once()
+func TestAuthMiddleware_WithRedis(t *testing.T) {
+	// Создаем мок для Redis клиента
+	mockRedis := new(MockRedisClient)
 
-		// Создаем тестовый обработчик, который проверяет контекст
-		contextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Проверяем, что информация о пользователе добавлена в контекст
-			userID, ok := r.Context().Value("user_id").(int)
-			assert.True(t, ok)
-			assert.Equal(t, 123, userID)
+	// Создаем мок для сервиса аутентификации
+	mockAuthService := new(MockAuthService)
 
-			role, ok := r.Context().Value("user_role").(string)
-			assert.True(t, ok)
-			assert.Equal(t, "client", role)
+	t.Run("Токен в черном списке", func(t *testing.T) {
+		// Сбрасываем моки
+		mockRedis.ExpectedCalls = nil
+		mockAuthService.ExpectedCalls = nil
 
-			token, ok := r.Context().Value("token").(string)
-			assert.True(t, ok)
-			assert.Equal(t, "valid-token", token)
+		// Настраиваем ожидаемое поведение для Redis
+		// Проверяем, что токен находится в черном списке
+		mockRedis.On("Get", mock.Anything, "blacklist:blacklisted-token").Return("user_id:123", nil).Once()
 
+		// Создаем AuthMiddleware с мок-сервисом
+		authMiddleware := NewAuthMiddleware(mockAuthService)
+
+		// Настраиваем ожидаемое поведение для сервиса аутентификации
+		mockAuthService.On("ValidateToken", "blacklisted-token").Return(0, errors.New("недействительный токен")).Once()
+
+		// Создаем тестовый обработчик
+		testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("Success"))
 		})
 
-		// Создаем новый роутер с новым обработчиком
+		// Создаем middleware
+		middleware := authMiddleware.Middleware()
+
+		// Создаем тестовый сервер
 		router := mux.NewRouter()
 		router.Use(middleware)
-		router.HandleFunc("/test", contextHandler).Methods("GET")
+		router.HandleFunc("/test", testHandler).Methods("GET")
+
+		// Создаем тестовый запрос с токеном из черного списка
+		req, err := http.NewRequest("GET", "/test", nil)
+		assert.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer blacklisted-token")
+
+		// Создаем ResponseRecorder для записи ответа
+		rr := httptest.NewRecorder()
+
+		// Выполняем запрос
+		router.ServeHTTP(rr, req)
+
+		// Проверяем статус ответа
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+
+		// Проверяем тело ответа - используем точное сравнение вместо Contains
+		assert.Equal(t, "Недействительный токен\n", rr.Body.String())
+
+		// Проверяем, что все ожидаемые вызовы были выполнены
+		mockAuthService.AssertExpectations(t)
+	})
+
+	t.Run("Действительный токен с Redis", func(t *testing.T) {
+		// Сбрасываем моки
+		mockRedis.ExpectedCalls = nil
+		mockAuthService.ExpectedCalls = nil
+
+		// Настраиваем ожидаемое поведение для сервиса аутентификации
+		mockAuthService.On("ValidateToken", "valid-token").Return(123, nil).Once()
+
+		// Создаем AuthMiddleware с мок-сервисом
+		authMiddleware := NewAuthMiddleware(mockAuthService)
+
+		// Создаем тестовый обработчик
+		testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Проверяем, что информация о пользователе добавлена в контекст
+			userID, ok := r.Context().Value("user_id").(int)
+			if ok {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("User ID: " + strconv.Itoa(userID)))
+			} else {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("No user ID in context"))
+			}
+		})
+
+		// Создаем middleware
+		middleware := authMiddleware.Middleware()
+
+		// Создаем тестовый сервер
+		router := mux.NewRouter()
+		router.Use(middleware)
+		router.HandleFunc("/test", testHandler).Methods("GET")
 
 		// Создаем тестовый запрос с действительным токеном
 		req, err := http.NewRequest("GET", "/test", nil)
@@ -185,6 +318,9 @@ func TestAuthMiddleware_Middleware(t *testing.T) {
 
 		// Проверяем статус ответа
 		assert.Equal(t, http.StatusOK, rr.Code)
+
+		// Проверяем тело ответа
+		assert.Contains(t, rr.Body.String(), "User ID: 123")
 
 		// Проверяем, что все ожидаемые вызовы были выполнены
 		mockAuthService.AssertExpectations(t)

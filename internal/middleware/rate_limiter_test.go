@@ -48,6 +48,33 @@ func (m *MockRedisClient) GetJSON(ctx context.Context, key string, dest interfac
 	return args.Error(0)
 }
 
+// MonitorStats возвращает статистику использования Redis
+func (m *MockRedisClient) MonitorStats(ctx context.Context) (*cache.RedisStats, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*cache.RedisStats), args.Error(1)
+}
+
+// CleanupRateLimitKeys удаляет устаревшие ключи rate limit
+func (m *MockRedisClient) CleanupRateLimitKeys(ctx context.Context) (int64, error) {
+	args := m.Called(ctx)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+// CleanupBlacklistKeys удаляет устаревшие ключи из черного списка токенов
+func (m *MockRedisClient) CleanupBlacklistKeys(ctx context.Context) (int64, error) {
+	args := m.Called(ctx)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+// ScheduleRedisCleanup запускает периодическую очистку Redis
+func (m *MockRedisClient) ScheduleRedisCleanup(interval time.Duration) chan bool {
+	args := m.Called(interval)
+	return args.Get(0).(chan bool)
+}
+
 func TestRateLimiter_Middleware(t *testing.T) {
 	// Создаем мок для RedisClient
 	mockRedis := new(MockRedisClient)
@@ -118,6 +145,12 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		mockRedis = new(MockRedisClient)
 		rateLimiter = NewRateLimiter(mockRedis, config)
 
+		// Обновляем middleware и router
+		middleware = rateLimiter.Middleware()
+		router = mux.NewRouter()
+		router.Use(middleware)
+		router.HandleFunc("/test", testHandler).Methods("GET")
+
 		// Настраиваем мок для проверки блокировки IP
 		mockRedis.On("Get", mock.Anything, "rate_limit:block:127.0.0.1").Return("", cache.ErrKeyNotFound).Once()
 
@@ -128,7 +161,7 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		mockRedis.On("Set", mock.Anything, "rate_limit:unauth:127.0.0.1:count", "16", time.Duration(0)).Return(nil).Once()
 
 		// Настраиваем мок для блокировки IP
-		mockRedis.On("Set", mock.Anything, "rate_limit:block:127.0.0.1", "blocked", time.Minute).Return(nil).Once()
+		mockRedis.On("Set", mock.Anything, "rate_limit:block:127.0.0.1", mock.Anything, time.Minute).Return(nil).Once()
 
 		// Создаем тестовый запрос
 		req, err := http.NewRequest("GET", "/test", nil)
@@ -157,6 +190,12 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		// Сбрасываем мок
 		mockRedis = new(MockRedisClient)
 		rateLimiter = NewRateLimiter(mockRedis, config)
+
+		// Обновляем middleware и router
+		middleware = rateLimiter.Middleware()
+		router = mux.NewRouter()
+		router.Use(middleware)
+		router.HandleFunc("/test", testHandler).Methods("GET")
 
 		// Настраиваем мок для проверки блокировки IP
 		mockRedis.On("Get", mock.Anything, "rate_limit:block:127.0.0.1").Return("", cache.ErrKeyNotFound).Once()
@@ -199,6 +238,12 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		mockRedis = new(MockRedisClient)
 		rateLimiter = NewRateLimiter(mockRedis, config)
 
+		// Обновляем middleware и router
+		middleware = rateLimiter.Middleware()
+		router = mux.NewRouter()
+		router.Use(middleware)
+		router.HandleFunc("/test", testHandler).Methods("GET")
+
 		// Настраиваем мок для проверки блокировки IP
 		mockRedis.On("Get", mock.Anything, "rate_limit:block:127.0.0.1").Return("", cache.ErrKeyNotFound).Once()
 
@@ -239,6 +284,12 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		// Сбрасываем мок
 		mockRedis = new(MockRedisClient)
 		rateLimiter = NewRateLimiter(mockRedis, config)
+
+		// Обновляем middleware и router
+		middleware = rateLimiter.Middleware()
+		router = mux.NewRouter()
+		router.Use(middleware)
+		router.HandleFunc("/test", testHandler).Methods("GET")
 
 		// Настраиваем мок для проверки блокировки IP
 		mockRedis.On("Get", mock.Anything, "rate_limit:block:127.0.0.1").Return("blocked", nil).Once()

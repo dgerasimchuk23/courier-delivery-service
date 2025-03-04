@@ -27,6 +27,7 @@ func TestCreateUser(t *testing.T) {
 			user: models.User{
 				Email:    "test@example.com",
 				Password: "password123",
+				Role:     "client",
 			},
 			mock: func() {
 				mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM users WHERE email = \$1\)`).
@@ -34,8 +35,25 @@ func TestCreateUser(t *testing.T) {
 					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 
 				// Используем QueryRow вместо Exec для INSERT
-				mock.ExpectQuery(`INSERT INTO users \(email, password, created_at, updated_at\) VALUES \(\$1, \$2, \$3, \$4\) RETURNING id`).
-					WithArgs("test@example.com", "password123", sqlmock.AnyArg(), sqlmock.AnyArg()).
+				mock.ExpectQuery(`INSERT INTO users \(email, password, role, created_at, updated_at\) VALUES \(\$1, \$2, \$3, \$4, \$4\) RETURNING id`).
+					WithArgs("test@example.com", "password123", "client", sqlmock.AnyArg()).
+					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+			},
+			wantErr: false,
+		},
+		{
+			user: models.User{
+				Email:    "test@example.com",
+				Password: "password123",
+			},
+			mock: func() {
+				mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM users WHERE email = \$1\)`).
+					WithArgs("test@example.com").
+					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+
+				// Используем QueryRow вместо Exec для INSERT
+				mock.ExpectQuery(`INSERT INTO users \(email, password, role, created_at, updated_at\) VALUES \(\$1, \$2, \$3, \$4, \$4\) RETURNING id`).
+					WithArgs("test@example.com", "password123", "client", sqlmock.AnyArg()).
 					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 			},
 			wantErr: false,
@@ -88,17 +106,17 @@ func TestGetUserByEmail(t *testing.T) {
 		{
 			email: "test@example.com",
 			mock: func() {
-				mock.ExpectQuery(`SELECT id, email, password, created_at, updated_at FROM users WHERE email = \$1`).
+				mock.ExpectQuery(`SELECT id, email, password, role, created_at, updated_at FROM users WHERE email = \$1`).
 					WithArgs("test@example.com").
-					WillReturnRows(sqlmock.NewRows([]string{"id", "email", "password", "created_at", "updated_at"}).
-						AddRow(1, "test@example.com", "password123", now, now))
+					WillReturnRows(sqlmock.NewRows([]string{"id", "email", "password", "role", "created_at", "updated_at"}).
+						AddRow(1, "test@example.com", "password123", "client", now, now))
 			},
 			wantErr: false,
 		},
 		{
 			email: "nonexistent@example.com",
 			mock: func() {
-				mock.ExpectQuery(`SELECT id, email, password, created_at, updated_at FROM users WHERE email = \$1`).
+				mock.ExpectQuery(`SELECT id, email, password, role, created_at, updated_at FROM users WHERE email = \$1`).
 					WithArgs("nonexistent@example.com").
 					WillReturnError(sql.ErrNoRows)
 			},
@@ -140,17 +158,17 @@ func TestGetUserByID(t *testing.T) {
 		{
 			id: 1,
 			mock: func() {
-				mock.ExpectQuery(`SELECT id, email, password, created_at, updated_at FROM users WHERE id = \$1`).
+				mock.ExpectQuery(`SELECT id, email, password, role, created_at, updated_at FROM users WHERE id = \$1`).
 					WithArgs(1).
-					WillReturnRows(sqlmock.NewRows([]string{"id", "email", "password", "created_at", "updated_at"}).
-						AddRow(1, "test@example.com", "password123", now, now))
+					WillReturnRows(sqlmock.NewRows([]string{"id", "email", "password", "role", "created_at", "updated_at"}).
+						AddRow(1, "test@example.com", "password123", "client", now, now))
 			},
 			wantErr: false,
 		},
 		{
 			id: 2,
 			mock: func() {
-				mock.ExpectQuery(`SELECT id, email, password, created_at, updated_at FROM users WHERE id = \$1`).
+				mock.ExpectQuery(`SELECT id, email, password, role, created_at, updated_at FROM users WHERE id = \$1`).
 					WithArgs(2).
 					WillReturnError(sql.ErrNoRows)
 			},
