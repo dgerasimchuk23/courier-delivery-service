@@ -17,6 +17,7 @@ type Config struct {
 		DBName           string `json:"dbname"`
 		SSLMode          string `json:"sslmode"`
 		CheckPerformance bool   `json:"check_performance"`
+		MaxRefreshTokens int    `json:"max_refresh_tokens"` // Максимальное количество refresh-токенов для пользователя
 	} `json:"database"`
 	Redis struct {
 		Host     string `json:"host"`
@@ -42,6 +43,11 @@ func LoadConfig(filePath string) (*Config, error) {
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&config); err != nil {
 		return nil, fmt.Errorf("ошибка декодирования файла конфигурации: %v", err)
+	}
+
+	// Устанавливаем значение по умолчанию для MaxRefreshTokens, если не задано
+	if config.Database.MaxRefreshTokens <= 0 {
+		config.Database.MaxRefreshTokens = 5 // По умолчанию храним 5 токенов
 	}
 
 	// Проверяем, запущено ли приложение в контейнере
@@ -87,6 +93,11 @@ func LoadConfig(filePath string) (*Config, error) {
 	}
 	if checkPerf := os.Getenv("DB_CHECK_PERFORMANCE"); checkPerf != "" {
 		config.Database.CheckPerformance = checkPerf == "true"
+	}
+	if maxTokens := os.Getenv("DB_MAX_REFRESH_TOKENS"); maxTokens != "" {
+		if mt, err := strconv.Atoi(maxTokens); err == nil && mt > 0 {
+			config.Database.MaxRefreshTokens = mt
+		}
 	}
 
 	return &config, nil

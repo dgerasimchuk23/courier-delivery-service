@@ -3,8 +3,10 @@ package db
 import (
 	"database/sql"
 	"delivery/config"
+	migrations "delivery/internal/db/migrations"
 	"fmt"
 	"log"
+	"path/filepath"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -49,34 +51,53 @@ func createPostgresDBIfNotExists(config *config.Config) error {
 func InitDB(config *config.Config) *sql.DB {
 	var db *sql.DB
 	var err error
+	maxRetries := 5
+	retryInterval := 3 * time.Second
 
 	// Если DB не существует, создать
 	if err := createPostgresDBIfNotExists(config); err != nil {
 		log.Fatalf("Ошибка при создании базы данных PostgreSQL: %v", err)
 	}
 
-	// Подключение к PostgreSQL
+	// Подключение к PostgreSQL с ретраями
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		config.Database.Host, config.Database.Port, config.Database.User,
 		config.Database.Password, config.Database.DBName, config.Database.SSLMode)
 
-	db, err = sql.Open("postgres", psqlInfo)
-	if err != nil {
-		log.Fatalf("Ошибка подключения к PostgreSQL: %v", err)
+	// Пытаемся подключиться с ретраями
+	for i := 0; i < maxRetries; i++ {
+		db, err = sql.Open("postgres", psqlInfo)
+		if err != nil {
+			log.Printf("Попытка %d: Ошибка подключения к PostgreSQL: %v", i+1, err)
+			time.Sleep(retryInterval)
+			continue
+		}
+
+		// Проверка соединения
+		if err := db.Ping(); err != nil {
+			log.Printf("Попытка %d: Ошибка проверки соединения с базой данных: %v", i+1, err)
+			db.Close()
+			time.Sleep(retryInterval)
+			continue
+		}
+
+		// Если дошли сюда, значит подключение успешно
+		log.Printf("Успешное подключение к базе данных после %d попыток", i+1)
+		break
 	}
 
-	// Проверка соединения
-	if err := db.Ping(); err != nil {
-		log.Fatalf("Ошибка проверки соединения с базой данных: %v", err)
+	// Если после всех попыток не удалось подключиться
+	if db == nil || err != nil {
+		log.Fatalf("Не удалось подключиться к базе данных после %d попыток: %v", maxRetries, err)
 	}
 
 	// Инициализация схемы БД
-	if err := InitSchema(db, "postgres"); err != nil {
+	if err := migrations.InitSchema(db, "postgres"); err != nil {
 		log.Fatalf("Ошибка инициализации схемы: %v", err)
 	}
 
 	// Выполнение миграций
-	if err := MigrateDB(db); err != nil {
+	if err := migrations.MigrateDB(db); err != nil {
 		log.Fatalf("Ошибка выполнения миграций: %v", err)
 	}
 
@@ -85,13 +106,32 @@ func InitDB(config *config.Config) *sql.DB {
 		log.Printf("Ошибка оптимизации базы данных: %v", err)
 	}
 
-	// Запускаем периодическую очистку токенов (каждые 12 часов, оставляем последние 5 токенов)
-	tokenCleanupDone = ScheduleTokenCleanup(db, 12*time.Hour, 5)
+	// Запускаем периодическую очистку токенов
+	// Используем значение из конфигурации вместо жестко заданного 5
+	maxRefreshTokens := config.Database.MaxRefreshTokens
+	log.Printf("Настройка очистки токенов: хранение последних %d токенов для каждого пользователя", maxRefreshTokens)
+	tokenCleanupDone = ScheduleTokenCleanup(db, 12*time.Hour, maxRefreshTokens)
+
+	// Инициализация мониторинга производительности
+	logDir := filepath.Join("logs", "db_performance")
+	if err := InitPerformanceMonitoring(logDir); err != nil {
+		log.Printf("Ошибка инициализации мониторинга производительности: %v", err)
+	}
 
 	// Проверка производительности ключевых запросов
 	if config.Database.CheckPerformance {
 		if err := CheckDatabasePerformance(db); err != nil {
 			log.Printf("Ошибка проверки производительности базы данных: %v", err)
+		}
+
+		// Дополнительно запускаем подробную проверку с логированием
+		if err := CheckDatabasePerformanceDetailed(db); err != nil {
+			log.Printf("Ошибка подробной проверки производительности базы данных: %v", err)
+		}
+
+		// Автоматическое добавление недостающих индексов
+		if err := AutoAddMissingIndices(db); err != nil {
+			log.Printf("Ошибка при автоматическом добавлении индексов: %v", err)
 		}
 	}
 
@@ -104,6 +144,9 @@ func CloseDB(db *sql.DB) {
 	if tokenCleanupDone != nil {
 		tokenCleanupDone <- true
 	}
+
+	// Закрываем мониторинг производительности
+	ClosePerformanceMonitoring()
 
 	// Закрываем соединение с базой данных
 	if db != nil {

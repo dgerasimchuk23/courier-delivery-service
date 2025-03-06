@@ -5,8 +5,9 @@ import (
 	"log"
 )
 
-// Создание таблиц в базе данных, если их нет
+// InitSchema создает таблицы в базе данных, если их нет
 func InitSchema(db *sql.DB, dbType string) error {
+	log.Println("Создание схемы базы данных...")
 	schema := `
 	CREATE TABLE IF NOT EXISTS customer (
 		id SERIAL PRIMARY KEY,
@@ -56,12 +57,6 @@ func InitSchema(db *sql.DB, dbType string) error {
 		created_at TIMESTAMP NOT NULL,
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 	);
-	
-	-- Создаем индексы для оптимизации запросов
-	CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-	CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token);
-	CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
-	CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
 	`
 
 	if _, err := db.Exec(schema); err != nil {
@@ -94,5 +89,6 @@ func InitSchema(db *sql.DB, dbType string) error {
 		log.Println("Колонка role успешно добавлена в таблицу users")
 	}
 
+	log.Println("Схема базы данных успешно создана")
 	return nil
 }
