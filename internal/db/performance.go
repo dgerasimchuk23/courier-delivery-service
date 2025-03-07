@@ -167,9 +167,21 @@ func AnalyzeQuery(db *sql.DB, query string) (*PerformanceStats, error) {
 
 // ReadQueriesFromFile читает SQL-запросы из файла
 func ReadQueriesFromFile(filePath string) ([]string, error) {
-	content, err := ioutil.ReadFile(filePath)
+	// Получаем абсолютный путь к файлу
+	absPath, err := filepath.Abs(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка чтения файла: %w", err)
+		return nil, fmt.Errorf("ошибка получения абсолютного пути: %w", err)
+	}
+
+	log.Printf("Пытаемся прочитать файл: %s (абсолютный путь: %s)", filePath, absPath)
+
+	content, err := ioutil.ReadFile(absPath)
+	if err != nil {
+		// Если не удалось прочитать по абсолютному пути, пробуем относительный
+		content, err = ioutil.ReadFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка чтения файла: %w", err)
+		}
 	}
 
 	// Разделяем содержимое файла на отдельные запросы
@@ -250,29 +262,15 @@ func CheckDatabasePerformanceDetailed(db *sql.DB) error {
 	// Список запросов для проверки
 	var queries []string
 
-	// 1. Пытаемся прочитать запросы из файла analyze_queries.sql
-	// Проверяем несколько возможных путей к файлу
-	possiblePaths := []string{
-		"analyze_queries.sql",             // Ищем в текущей директории
-		"internal/db/analyze_queries.sql", // Путь относительно корня проекта
-		"scripts/analyze_queries.sql",
-		"../scripts/analyze_queries.sql",
-		"../../scripts/analyze_queries.sql",
-	}
-
-	var fileQueries []string
-	var fileReadErr error
-	for _, path := range possiblePaths {
-		fileQueries, fileReadErr = ReadQueriesFromFile(path)
-		if fileReadErr == nil {
-			log.Printf("Прочитано %d запросов из файла %s", len(fileQueries), path)
-			queries = append(queries, fileQueries...)
-			break
-		}
-	}
-
-	if fileReadErr != nil {
-		log.Printf("Не удалось прочитать запросы из файла analyze_queries.sql: %v", fileReadErr)
+	// Читаем запросы из файла analyze_queries.sql
+	// Используем только один правильный путь к файлу
+	path := "/root/internal/db/analyze_queries.sql"
+	fileQueries, fileReadErr := ReadQueriesFromFile(path)
+	if fileReadErr == nil {
+		log.Printf("Прочитано %d запросов из файла %s", len(fileQueries), path)
+		queries = append(queries, fileQueries...)
+	} else {
+		log.Printf("Не удалось прочитать запросы из файла %s: %v", path, fileReadErr)
 	}
 
 	// 2. Пытаемся извлечь запросы из логов

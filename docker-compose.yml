@@ -15,16 +15,21 @@ services:
       - DB_NAME=delivery
       - DB_SSLMODE=disable
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6380
       - REDIS_PASSWORD=
       - REDIS_DB=0
+    volumes:
+      - ./internal/db/analyze_queries.sql:/root/internal/db/analyze_queries.sql
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   db:
     image: postgres:14
     container_name: delivery_postgres
+    restart: always
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -33,14 +38,25 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
     container_name: delivery_redis
+    restart: always
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+      start_period: 5s
 
 volumes:
   postgres_data:
