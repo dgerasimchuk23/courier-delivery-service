@@ -56,11 +56,11 @@ func main() {
 	}
 
 	// Инициализация хранилищ
-	customerStore := customer.NewCustomerStore(database)
-	parcelStore := parcel.NewParcelStore(database)
-	deliveryStore := delivery.NewDeliveryStore(database)
-	courierStore := courier.NewCourierStore(database)
-	userStore := auth.NewUserStore(database)
+	customerStore := customer.NewCustomerStore(database.DB)
+	parcelStore := parcel.NewParcelStore(database.DB)
+	deliveryStore := delivery.NewDeliveryStore(database.DB)
+	courierStore := courier.NewCourierStore(database.DB)
+	userStore := auth.NewUserStore(database.DB)
 
 	// Инициализация сервисов
 	customerService := customer.NewCustomerService(customerStore)

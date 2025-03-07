@@ -1,0 +1,10 @@
+﻿ schemaname | tablename |     indexname      |                                   indexdef                                    
+------------+-----------+--------------------+-------------------------------------------------------------------------------
+ public     | courier   | courier_email_key  | CREATE UNIQUE INDEX courier_email_key ON public.courier USING btree (email)
+ public     | courier   | courier_pkey       | CREATE UNIQUE INDEX courier_pkey ON public.courier USING btree (id)
+ public     | customer  | customer_email_key | CREATE UNIQUE INDEX customer_email_key ON public.customer USING btree (email)
+ public     | customer  | customer_pkey      | CREATE UNIQUE INDEX customer_pkey ON public.customer USING btree (id)
+ public     | delivery  | delivery_pkey      | CREATE UNIQUE INDEX delivery_pkey ON public.delivery USING btree (id)
+ public     | parcel    | parcel_pkey        | CREATE UNIQUE INDEX parcel_pkey ON public.parcel USING btree (id)
+(6 ёЄЁюъ)
+

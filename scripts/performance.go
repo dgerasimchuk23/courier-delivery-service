@@ -3,7 +3,9 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -15,21 +17,29 @@ type PerformanceStats struct {
 	Explanation  string
 }
 
+// LoadQueries загружает SQL-запросы из файла
+func LoadQueries(filename string) ([]string, error) {
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка чтения файла %s: %w", filename, err)
+	}
+	queries := strings.Split(string(data), ";") // Разделяем по `;`
+	return queries, nil
+}
+
 // AnalyzeQuery выполняет анализ производительности запроса
 func AnalyzeQuery(db *sql.DB, query string) (*PerformanceStats, error) {
-	// Измеряем время выполнения запроса
-	start := time.Now()
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, nil // Пропускаем пустые запросы
+	}
 
-	// Выполняем запрос
+	start := time.Now()
 	result, err := db.Exec(query)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
-
-	// Получаем количество затронутых строк
 	rowsAffected, _ := result.RowsAffected()
-
-	// Вычисляем длительность выполнения
 	duration := time.Since(start)
 
 	// Получаем план выполнения запроса
@@ -40,7 +50,6 @@ func AnalyzeQuery(db *sql.DB, query string) (*PerformanceStats, error) {
 	}
 	defer rows.Close()
 
-	// Собираем результаты EXPLAIN ANALYZE
 	var explanation string
 	for rows.Next() {
 		var line string
@@ -62,27 +71,22 @@ func AnalyzeQuery(db *sql.DB, query string) (*PerformanceStats, error) {
 	}, nil
 }
 
-// CheckDatabasePerformance проверяет производительность ключевых запросов
-func CheckDatabasePerformance(db *sql.DB) error {
+// CheckDatabasePerformance проверяет производительность запросов из файла
+func CheckDatabasePerformance(db *sql.DB, queriesFile string) error {
 	log.Println("Проверка производительности базы данных...")
 
-	// Список ключевых запросов для проверки
-	queries := []string{
-		"SELECT * FROM users WHERE email = 'test@example.com'",
-		"SELECT * FROM refresh_tokens WHERE user_id = 1",
-		"SELECT * FROM refresh_tokens WHERE token = 'test-token'",
-		"SELECT * FROM customer WHERE email = 'customer@example.com'",
-		"SELECT * FROM courier WHERE status = 'active'",
-		"SELECT * FROM parcel WHERE status = 'pending'",
-		"SELECT * FROM delivery WHERE courier_id = 1",
-		"SELECT d.* FROM delivery d JOIN parcel p ON d.parcel_id = p.id WHERE p.status = 'delivered'",
+	queries, err := LoadQueries(queriesFile)
+	if err != nil {
+		return err
 	}
 
-	// Проверяем каждый запрос
 	for _, query := range queries {
 		stats, err := AnalyzeQuery(db, query)
 		if err != nil {
 			log.Printf("Ошибка анализа запроса '%s': %v", query, err)
+			continue
+		}
+		if stats == nil {
 			continue
 		}
 
@@ -92,7 +96,6 @@ func CheckDatabasePerformance(db *sql.DB) error {
 		log.Printf("План выполнения:\n%s", stats.Explanation)
 		log.Println("-----------------------------------")
 
-		// Если запрос выполняется слишком долго, выводим предупреждение
 		if stats.Duration > 100*time.Millisecond {
 			log.Printf("ВНИМАНИЕ: Запрос выполняется слишком долго: %v", stats.Duration)
 		}
@@ -105,19 +108,9 @@ func CheckDatabasePerformance(db *sql.DB) error {
 func OptimizeDatabase(db *sql.DB) error {
 	log.Println("Выполнение оптимизации базы данных...")
 
-	// Выполняем VACUUM для очистки и анализа таблиц
 	_, err := db.Exec("VACUUM ANALYZE")
 	if err != nil {
 		return fmt.Errorf("ошибка выполнения VACUUM: %w", err)
-	}
-
-	// Анализируем таблицы для обновления статистики
-	tables := []string{"users", "refresh_tokens", "customer", "courier", "parcel", "delivery"}
-	for _, table := range tables {
-		_, err := db.Exec(fmt.Sprintf("ANALYZE %s", table))
-		if err != nil {
-			log.Printf("Ошибка выполнения ANALYZE для таблицы %s: %v", table, err)
-		}
 	}
 
 	log.Println("Оптимизация базы данных завершена")

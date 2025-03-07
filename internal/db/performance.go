@@ -1,11 +1,15 @@
 package db
 
 import (
+	"bufio"
 	"database/sql"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -98,6 +102,15 @@ func ClosePerformanceMonitoring() {
 
 // AnalyzeQuery выполняет анализ производительности запроса
 func AnalyzeQuery(db *sql.DB, query string) (*PerformanceStats, error) {
+	// Пропускаем запросы, которые не являются SELECT, INSERT, UPDATE или DELETE
+	query = strings.TrimSpace(query)
+	if !strings.HasPrefix(strings.ToUpper(query), "SELECT") &&
+		!strings.HasPrefix(strings.ToUpper(query), "INSERT") &&
+		!strings.HasPrefix(strings.ToUpper(query), "UPDATE") &&
+		!strings.HasPrefix(strings.ToUpper(query), "DELETE") {
+		return nil, fmt.Errorf("запрос не является SELECT, INSERT, UPDATE или DELETE")
+	}
+
 	// Измеряем время выполнения запроса
 	start := time.Now()
 
@@ -118,26 +131,30 @@ func AnalyzeQuery(db *sql.DB, query string) (*PerformanceStats, error) {
 		slowQueryLogger.LogQuery(query, duration, rowsAffected)
 	}
 
-	// Получаем план выполнения запроса
-	explainQuery := fmt.Sprintf("EXPLAIN ANALYZE %s", query)
-	rows, err := db.Query(explainQuery)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка получения плана запроса: %w", err)
-	}
-	defer rows.Close()
-
-	// Собираем результаты EXPLAIN ANALYZE
+	// Получаем план выполнения запроса для SELECT
 	var explanation string
-	for rows.Next() {
-		var line string
-		if err := rows.Scan(&line); err != nil {
-			return nil, fmt.Errorf("ошибка сканирования результата EXPLAIN: %w", err)
-		}
-		explanation += line + "\n"
-	}
+	if strings.HasPrefix(strings.ToUpper(query), "SELECT") {
+		explainQuery := fmt.Sprintf("EXPLAIN ANALYZE %s", query)
+		rows, err := db.Query(explainQuery)
+		if err != nil {
+			log.Printf("Ошибка получения плана запроса: %v", err)
+		} else {
+			defer rows.Close()
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("ошибка при итерации по результатам EXPLAIN: %w", err)
+			// Собираем результаты EXPLAIN ANALYZE
+			for rows.Next() {
+				var line string
+				if err := rows.Scan(&line); err != nil {
+					log.Printf("Ошибка сканирования результата EXPLAIN: %v", err)
+					continue
+				}
+				explanation += line + "\n"
+			}
+
+			if err := rows.Err(); err != nil {
+				log.Printf("Ошибка при итерации по результатам EXPLAIN: %v", err)
+			}
+		}
 	}
 
 	return &PerformanceStats{
@@ -148,20 +165,138 @@ func AnalyzeQuery(db *sql.DB, query string) (*PerformanceStats, error) {
 	}, nil
 }
 
+// ReadQueriesFromFile читает SQL-запросы из файла
+func ReadQueriesFromFile(filePath string) ([]string, error) {
+	content, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка чтения файла: %w", err)
+	}
+
+	// Разделяем содержимое файла на отдельные запросы
+	fileContent := string(content)
+	queries := []string{}
+
+	// Регулярное выражение для поиска SQL-запросов
+	// Ищем запросы, которые начинаются с SELECT, INSERT, UPDATE, DELETE
+	// и заканчиваются точкой с запятой
+	re := regexp.MustCompile(`(?i)(SELECT|INSERT|UPDATE|DELETE)[\s\S]*?;`)
+	matches := re.FindAllString(fileContent, -1)
+
+	for _, match := range matches {
+		// Пропускаем комментарии и пустые строки
+		if !strings.HasPrefix(strings.TrimSpace(match), "--") && strings.TrimSpace(match) != "" {
+			queries = append(queries, strings.TrimSpace(match))
+		}
+	}
+
+	return queries, nil
+}
+
+// ExtractQueriesFromLogs извлекает SQL-запросы из лог-файлов
+func ExtractQueriesFromLogs(logDir string) ([]string, error) {
+	// Получаем список файлов логов
+	files, err := filepath.Glob(filepath.Join(logDir, "sql_queries_*.log"))
+	if err != nil {
+		return nil, fmt.Errorf("ошибка поиска файлов логов: %w", err)
+	}
+
+	uniqueQueries := make(map[string]struct{})
+	queryRegex := regexp.MustCompile(`SQL-запрос: (.+)`)
+
+	// Обрабатываем каждый файл логов
+	for _, file := range files {
+		f, err := os.Open(file)
+		if err != nil {
+			log.Printf("Ошибка открытия файла лога %s: %v", file, err)
+			continue
+		}
+		defer f.Close()
+
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := scanner.Text()
+			matches := queryRegex.FindStringSubmatch(line)
+			if len(matches) > 1 {
+				query := strings.TrimSpace(matches[1])
+				// Проверяем, что это SQL-запрос
+				if strings.HasPrefix(strings.ToUpper(query), "SELECT") ||
+					strings.HasPrefix(strings.ToUpper(query), "INSERT") ||
+					strings.HasPrefix(strings.ToUpper(query), "UPDATE") ||
+					strings.HasPrefix(strings.ToUpper(query), "DELETE") {
+					// Добавляем в уникальные запросы
+					uniqueQueries[query] = struct{}{}
+				}
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			log.Printf("Ошибка чтения файла лога %s: %v", file, err)
+		}
+	}
+
+	// Преобразуем уникальные запросы в список
+	queries := make([]string, 0, len(uniqueQueries))
+	for query := range uniqueQueries {
+		queries = append(queries, query)
+	}
+
+	return queries, nil
+}
+
 // CheckDatabasePerformanceDetailed проверяет производительность ключевых запросов с подробным логированием
 func CheckDatabasePerformanceDetailed(db *sql.DB) error {
 	log.Println("Проверка производительности базы данных с подробным логированием...")
 
-	// Список ключевых запросов для проверки
-	queries := []string{
-		"SELECT * FROM users WHERE email = 'test@example.com'",
-		"SELECT * FROM refresh_tokens WHERE user_id = 1",
-		"SELECT * FROM refresh_tokens WHERE token = 'test-token'",
-		"SELECT * FROM customer WHERE email = 'customer@example.com'",
-		"SELECT * FROM courier WHERE status = 'active'",
-		"SELECT * FROM parcel WHERE status = 'pending'",
-		"SELECT * FROM delivery WHERE courier_id = 1",
-		"SELECT d.* FROM delivery d JOIN parcel p ON d.parcel_id = p.id WHERE p.status = 'delivered'",
+	// Список запросов для проверки
+	var queries []string
+
+	// 1. Пытаемся прочитать запросы из файла analyze_queries.sql
+	// Проверяем несколько возможных путей к файлу
+	possiblePaths := []string{
+		"analyze_queries.sql",             // Ищем в текущей директории
+		"internal/db/analyze_queries.sql", // Путь относительно корня проекта
+		"scripts/analyze_queries.sql",
+		"../scripts/analyze_queries.sql",
+		"../../scripts/analyze_queries.sql",
+	}
+
+	var fileQueries []string
+	var fileReadErr error
+	for _, path := range possiblePaths {
+		fileQueries, fileReadErr = ReadQueriesFromFile(path)
+		if fileReadErr == nil {
+			log.Printf("Прочитано %d запросов из файла %s", len(fileQueries), path)
+			queries = append(queries, fileQueries...)
+			break
+		}
+	}
+
+	if fileReadErr != nil {
+		log.Printf("Не удалось прочитать запросы из файла analyze_queries.sql: %v", fileReadErr)
+	}
+
+	// 2. Пытаемся извлечь запросы из логов
+	logQueries, err := ExtractQueriesFromLogs("logs/sql_queries")
+	if err != nil {
+		log.Printf("Не удалось извлечь запросы из логов: %v", err)
+	} else {
+		log.Printf("Извлечено %d уникальных запросов из логов", len(logQueries))
+		queries = append(queries, logQueries...)
+	}
+
+	// 3. Если не удалось получить запросы из файла и логов, используем предопределенные запросы
+	if len(queries) == 0 {
+		log.Println("Используем предопределенные запросы для проверки производительности")
+		queries = []string{
+			"SELECT * FROM users WHERE email = 'test@example.com'",
+			"SELECT * FROM refresh_tokens WHERE user_id = 1",
+			"SELECT * FROM refresh_tokens WHERE token = 'test-token'",
+			"SELECT * FROM customer WHERE email = 'customer@example.com'",
+			"SELECT * FROM courier WHERE status = 'active'",
+			"SELECT * FROM parcel WHERE status = 'pending'",
+			"SELECT * FROM delivery WHERE courier_id = 1",
+			"SELECT d.* FROM delivery d JOIN parcel p ON d.parcel_id = p.id WHERE p.status = 'delivered'",
+		}
 	}
 
 	// Проверяем каждый запрос
@@ -175,7 +310,9 @@ func CheckDatabasePerformanceDetailed(db *sql.DB) error {
 		log.Printf("Запрос: %s", stats.Query)
 		log.Printf("Время выполнения: %v", stats.Duration)
 		log.Printf("Затронуто строк: %d", stats.RowsAffected)
-		log.Printf("План выполнения:\n%s", stats.Explanation)
+		if stats.Explanation != "" {
+			log.Printf("План выполнения:\n%s", stats.Explanation)
+		}
 		log.Println("-----------------------------------")
 	}
 
@@ -248,7 +385,8 @@ func AutoAddMissingIndices(db *sql.DB) error {
 					SELECT EXISTS (
 						SELECT 1 
 						FROM pg_indexes 
-						WHERE tablename = $1 AND indexname = $2
+						WHERE tablename = $1 
+						AND indexname = $2
 					)
 				`, tableName, indexName).Scan(&indexExists)
 
@@ -259,13 +397,15 @@ func AutoAddMissingIndices(db *sql.DB) error {
 
 				// Если индекс не существует, создаем его
 				if !indexExists {
-					log.Printf("Создание индекса для поля %s в таблице %s", fieldName, tableName)
-					_, err := db.Exec(fmt.Sprintf("CREATE INDEX %s ON %s(%s)", indexName, tableName, fieldName))
+					log.Printf("Создание индекса %s для поля %s в таблице %s", indexName, fieldName, tableName)
+					_, err := db.Exec(fmt.Sprintf("CREATE INDEX %s ON %s (%s)", indexName, tableName, fieldName))
 					if err != nil {
 						log.Printf("Ошибка создания индекса: %v", err)
 					} else {
 						log.Printf("Индекс %s успешно создан", indexName)
 					}
+				} else {
+					log.Printf("Индекс %s уже существует", indexName)
 				}
 			}
 			fieldsRows.Close()
@@ -273,4 +413,64 @@ func AutoAddMissingIndices(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+// AnalyzeLoggedQueries анализирует запросы из логов и выявляет проблемные
+func AnalyzeLoggedQueries(db *sql.DB) error {
+	log.Println("Анализ запросов из логов...")
+
+	// Извлекаем запросы из логов
+	queries, err := ExtractQueriesFromLogs("logs/sql_queries")
+	if err != nil {
+		return fmt.Errorf("ошибка извлечения запросов из логов: %w", err)
+	}
+
+	log.Printf("Найдено %d уникальных запросов в логах", len(queries))
+
+	// Анализируем каждый запрос
+	slowQueries := 0
+	for _, query := range queries {
+		stats, err := AnalyzeQuery(db, query)
+		if err != nil {
+			log.Printf("Пропуск запроса '%s': %v", query, err)
+			continue
+		}
+
+		// Если запрос выполняется медленно, логируем его
+		if stats.Duration >= SlowQueryThreshold {
+			slowQueries++
+			log.Printf("МЕДЛЕННЫЙ ЗАПРОС: %s", stats.Query)
+			log.Printf("Время выполнения: %v", stats.Duration)
+			log.Printf("Затронуто строк: %d", stats.RowsAffected)
+			if stats.Explanation != "" {
+				log.Printf("План выполнения:\n%s", stats.Explanation)
+			}
+			log.Println("-----------------------------------")
+		}
+	}
+
+	log.Printf("Анализ завершен. Найдено %d медленных запросов из %d проанализированных", slowQueries, len(queries))
+	return nil
+}
+
+// SchedulePerformanceAnalysis запускает периодический анализ производительности
+func SchedulePerformanceAnalysis(db *sql.DB, interval time.Duration) chan bool {
+	done := make(chan bool)
+	ticker := time.NewTicker(interval)
+
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				if err := AnalyzeLoggedQueries(db); err != nil {
+					log.Printf("Ошибка анализа запросов: %v", err)
+				}
+			case <-done:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+
+	return done
 }

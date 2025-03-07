@@ -26,33 +26,32 @@ ORDER BY
     pg_total_relation_size(relid) DESC;
 
 -- 3. Анализ запросов для таблицы users
-EXPLAIN ANALYZE SELECT * FROM users WHERE email = 'test@example.com';
-EXPLAIN ANALYZE SELECT * FROM users WHERE id = 1;
+SELECT * FROM users WHERE email = 'test@example.com';
+SELECT * FROM users WHERE id = 1;
 
 -- 4. Анализ запросов для таблицы refresh_tokens
-EXPLAIN ANALYZE SELECT * FROM refresh_tokens WHERE token = 'test-token';
-EXPLAIN ANALYZE SELECT * FROM refresh_tokens WHERE user_id = 1;
-EXPLAIN ANALYZE SELECT * FROM refresh_tokens WHERE expires_at < NOW();
+SELECT * FROM refresh_tokens WHERE token = 'test-token';
+SELECT * FROM refresh_tokens WHERE user_id = 1;
+SELECT * FROM refresh_tokens WHERE expires_at < NOW();
 
 -- 5. Анализ запросов для таблицы customer
-EXPLAIN ANALYZE SELECT * FROM customer WHERE email = 'customer@example.com';
-EXPLAIN ANALYZE SELECT * FROM customer WHERE id = 1;
+SELECT * FROM customer WHERE email = 'customer@example.com';
+SELECT * FROM customer WHERE id = 1;
 
 -- 6. Анализ запросов для таблицы courier
-EXPLAIN ANALYZE SELECT * FROM courier WHERE email = 'courier@example.com';
-EXPLAIN ANALYZE SELECT * FROM courier WHERE status = 'active';
+SELECT * FROM courier WHERE email = 'courier@example.com';
+SELECT * FROM courier WHERE status = 'active';
 
 -- 7. Анализ запросов для таблицы parcel
-EXPLAIN ANALYZE SELECT * FROM parcel WHERE client = 1;
-EXPLAIN ANALYZE SELECT * FROM parcel WHERE status = 'pending';
+SELECT * FROM parcel WHERE client = 1;
+SELECT * FROM parcel WHERE status = 'pending';
 
 -- 8. Анализ запросов для таблицы delivery
-EXPLAIN ANALYZE SELECT * FROM delivery WHERE courier_id = 1;
-EXPLAIN ANALYZE SELECT * FROM delivery WHERE parcel_id = 1;
-EXPLAIN ANALYZE SELECT * FROM delivery WHERE status = 'delivered';
+SELECT * FROM delivery WHERE courier_id = 1;
+SELECT * FROM delivery WHERE parcel_id = 1;
+SELECT * FROM delivery WHERE status = 'delivered';
 
 -- 9. Анализ сложных запросов с JOIN
-EXPLAIN ANALYZE
 SELECT d.*, p.address, c.name AS courier_name, cu.name AS customer_name
 FROM delivery d
 JOIN parcel p ON d.parcel_id = p.id

@@ -5,9 +5,8 @@ import (
 	"log"
 )
 
-// InitSchema создает таблицы в базе данных, если их нет
+// Создание таблиц в базе данных, если их нет
 func InitSchema(db *sql.DB, dbType string) error {
-	log.Println("Создание схемы базы данных...")
 	schema := `
 	CREATE TABLE IF NOT EXISTS customer (
 		id SERIAL PRIMARY KEY,
@@ -89,6 +88,5 @@ func InitSchema(db *sql.DB, dbType string) error {
 		log.Println("Колонка role успешно добавлена в таблицу users")
 	}
 
-	log.Println("Схема базы данных успешно создана")
 	return nil
 }

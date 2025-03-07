@@ -1,0 +1,8 @@
+﻿ table_name | total_size 
+------------+------------
+ customer   | 24 kB
+ courier    | 24 kB
+ parcel     | 16 kB
+ delivery   | 16 kB
+(4 ёЄЁюъш)
+
