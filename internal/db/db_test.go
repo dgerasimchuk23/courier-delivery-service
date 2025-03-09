@@ -2,18 +2,40 @@ package db
 
 import (
 	"delivery/config"
+	"os"
+	"strconv"
 	"testing"
 )
+
+func getEnv(key, fallback string) string {
+	value, exists := os.LookupEnv(key)
+	if !exists {
+		return fallback
+	}
+	return value
+}
+
+func getEnvInt(key string, fallback int) int {
+	value, exists := os.LookupEnv(key)
+	if !exists {
+		return fallback
+	}
+	intValue, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return intValue
+}
 
 func TestInitDB(t *testing.T) {
 	// Тестовая конфигурация
 	cfg := &config.Config{}
 	cfg.Database.Type = "postgres"
-	cfg.Database.Host = "localhost"
-	cfg.Database.Port = 5432
-	cfg.Database.User = "postgres"
-	cfg.Database.Password = "postgres"
-	cfg.Database.DBName = "delivery_test"
+	cfg.Database.Host = getEnv("DB_HOST", "db")
+	cfg.Database.Port = getEnvInt("DB_PORT", 5432)
+	cfg.Database.User = getEnv("DB_USER", "postgres")
+	cfg.Database.Password = getEnv("DB_PASSWORD", "postgres")
+	cfg.Database.DBName = getEnv("DB_NAME", "delivery")
 	cfg.Database.SSLMode = "disable"
 
 	// Инициализация DB
@@ -36,11 +58,11 @@ func TestInitDB(t *testing.T) {
 func TestCreatePostgresDBIfNotExists(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Database.Type = "postgres"
-	cfg.Database.Host = "localhost"
-	cfg.Database.Port = 5432
-	cfg.Database.User = "postgres"
-	cfg.Database.Password = "postgres"
-	cfg.Database.DBName = "delivery_test"
+	cfg.Database.Host = getEnv("DB_HOST", "db")
+	cfg.Database.Port = getEnvInt("DB_PORT", 5432)
+	cfg.Database.User = getEnv("DB_USER", "postgres")
+	cfg.Database.Password = getEnv("DB_PASSWORD", "postgres")
+	cfg.Database.DBName = getEnv("DB_NAME", "delivery")
 	cfg.Database.SSLMode = "disable"
 
 	// Проверка создания DB

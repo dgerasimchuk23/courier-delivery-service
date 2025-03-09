@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"delivery/internal/business/models"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -13,7 +14,14 @@ import (
 
 func setupTestDB(t *testing.T) (*sql.DB, string, func()) {
 	// Подключаемся к базе данных PostgreSQL
-	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=delivery sslmode=disable"
+	host := getEnv("DB_HOST", "db")
+	port := getEnv("DB_PORT", "5432")
+	user := getEnv("DB_USER", "postgres")
+	password := getEnv("DB_PASSWORD", "postgres")
+	dbname := getEnv("DB_NAME", "delivery")
+
+	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		host, port, user, password, dbname)
 	testDB, err := sql.Open("postgres", connStr)
 	if err != nil {
 		t.Fatalf("ошибка при открытии тестовой БД: %v", err)
@@ -47,6 +55,15 @@ func setupTestDB(t *testing.T) (*sql.DB, string, func()) {
 	}
 
 	return testDB, tableName, cleanup
+}
+
+// Вспомогательная функция для получения переменных окружения
+func getEnv(key, fallback string) string {
+	value, exists := os.LookupEnv(key)
+	if !exists {
+		return fallback
+	}
+	return value
 }
 
 func TestDeliveryStore_Add(t *testing.T) {

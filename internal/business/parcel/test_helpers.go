@@ -3,6 +3,7 @@ package parcel
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -10,7 +11,14 @@ import (
 
 func setupParcelTestDB() *ParcelStore {
 	// Подключение к PostgreSQL
-	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=delivery_test sslmode=disable"
+	host := getEnv("DB_HOST", "db")
+	port := getEnv("DB_PORT", "5432")
+	user := getEnv("DB_USER", "postgres")
+	password := getEnv("DB_PASSWORD", "postgres")
+	dbname := getEnv("DB_NAME", "delivery")
+
+	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		host, port, user, password, dbname)
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		panic(err)
@@ -39,4 +47,13 @@ func setupParcelTestDB() *ParcelStore {
 	store := NewParcelStore(db)
 	store.tableName = tableName
 	return store
+}
+
+// Вспомогательная функция для получения переменных окружения
+func getEnv(key, fallback string) string {
+	value, exists := os.LookupEnv(key)
+	if !exists {
+		return fallback
+	}
+	return value
 }
