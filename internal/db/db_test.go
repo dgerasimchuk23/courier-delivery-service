@@ -1,7 +1,7 @@
 package db
 
 import (
-	"delivery/config"
+	"delivery/internal/config"
 	"os"
 	"strconv"
 	"testing"

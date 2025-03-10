@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"delivery/config"
 	"delivery/internal/api"
 	"delivery/internal/auth"
 	"delivery/internal/business/courier"
@@ -10,7 +9,9 @@ import (
 	"delivery/internal/business/delivery"
 	"delivery/internal/business/parcel"
 	"delivery/internal/cache"
+	"delivery/internal/config"
 	"delivery/internal/db"
+	"delivery/internal/kafka"
 	"log"
 	"net/http"
 	"os"
@@ -19,14 +20,14 @@ import (
 	"syscall"
 	"time"
 
-	_ "github.com/lib/pq" // драйвер PostgreSQL
+	_ "github.com/lib/pq"
 )
 
 func main() {
 	// Инициализация базы данных
-	config, err := config.LoadConfig("./config/config.json")
+	config, err := config.LoadConfig("./internal/config/config.json")
 	if err != nil {
-		log.Fatalf("Ошибка загрузки конфигурации: %v", err)
+		log.Fatalf("Не удалось загрузить конфигурацию: %v", err)
 	}
 
 	database := db.InitDB(config)
@@ -36,23 +37,32 @@ func main() {
 	redisClient := cache.NewRedisClient(config)
 	if redisClient != nil {
 		defer redisClient.Close()
-		log.Println("Redis успешно инициализирован")
-
-		// Выводим начальную статистику Redis
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		stats, err := redisClient.MonitorStats(ctx)
-		cancel()
-
-		if err != nil {
-			log.Printf("Ошибка при получении статистики Redis: %v", err)
-		} else {
-			log.Printf("Статистика Redis при запуске: total keys=%d, rate limit keys=%d, blacklist keys=%d",
-				stats.TotalKeys, stats.RateLimitKeys, stats.BlacklistKeys)
-			log.Printf("Память Redis: used=%d bytes, peak=%d bytes",
-				stats.UsedMemory, stats.UsedMemoryPeak)
-		}
+		redisClient.LogInitialStats()
 	} else {
 		log.Println("Не удалось инициализировать Redis, продолжаем без кэширования")
+	}
+
+	// Инициализация Kafka
+	kafkaClient, err := kafka.NewClient()
+	if err != nil {
+		log.Printf("Предупреждение: Не удалось инициализировать клиент Kafka: %v", err)
+	} else {
+		defer kafkaClient.Close()
+		log.Println("Клиент Kafka успешно инициализирован")
+
+		// Запускаем тестовый consumer и отправляем тестовое сообщение
+		err = kafkaClient.StartTestConsumer("test-topic", "test-group")
+		if err != nil {
+			log.Printf("Предупреждение: Не удалось запустить тестовый consumer: %v", err)
+		}
+
+		// Отправляем тестовое сообщение через некоторое время
+		go func() {
+			time.Sleep(2 * time.Second)
+			if err := kafkaClient.SendTestMessage("test-topic", "Привет, Kafka!"); err != nil {
+				log.Printf("Предупреждение: Не удалось отправить тестовое сообщение: %v", err)
+			}
+		}()
 	}
 
 	// Инициализация хранилищ
@@ -122,18 +132,7 @@ func main() {
 
 	// Если Redis доступен, выводим финальную статистику
 	if redisClient != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		stats, err := redisClient.MonitorStats(ctx)
-		cancel()
-
-		if err != nil {
-			log.Printf("Ошибка при получении финальной статистики Redis: %v", err)
-		} else {
-			log.Printf("Финальная статистика Redis: total keys=%d, rate limit keys=%d, blacklist keys=%d",
-				stats.TotalKeys, stats.RateLimitKeys, stats.BlacklistKeys)
-			log.Printf("Память Redis: used=%d bytes, peak=%d bytes",
-				stats.UsedMemory, stats.UsedMemoryPeak)
-		}
+		redisClient.LogFinalStats()
 	}
 
 	// Создаем контекст с таймаутом для корректного завершения
