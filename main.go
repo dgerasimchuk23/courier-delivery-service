@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"delivery/config"
 	"delivery/internal/api"
 	"delivery/internal/auth"
 	"delivery/internal/business/courier"
@@ -9,7 +10,6 @@ import (
 	"delivery/internal/business/delivery"
 	"delivery/internal/business/parcel"
 	"delivery/internal/cache"
-	"delivery/internal/config"
 	"delivery/internal/db"
 	"delivery/internal/kafka"
 	"log"
@@ -25,7 +25,7 @@ import (
 
 func main() {
 	// Инициализация базы данных
-	config, err := config.LoadConfig("./internal/config/config.json")
+	config, err := config.LoadConfig("./config/config.json")
 	if err != nil {
 		log.Fatalf("Не удалось загрузить конфигурацию: %v", err)
 	}
@@ -72,6 +72,10 @@ func main() {
 	courierStore := courier.NewCourierStore(database.DB)
 	userStore := auth.NewUserStore(database.DB)
 
+	// Инициализация WebSocket менеджера
+	wsManager := api.NewWebSocketManager()
+	go wsManager.Run()
+
 	// Инициализация сервисов
 	customerService := customer.NewCustomerService(customerStore)
 	parcelService := parcel.NewParcelService(parcelStore)
@@ -91,6 +95,9 @@ func main() {
 		// courierService.WithCache(redisClient)
 	}
 
+	// Добавляем WebSocket к сервису доставки
+	deliveryService.WithWebSocket(wsManager)
+
 	// Инициализация обработчиков
 	customerHandler := api.NewCustomerHandler(customerService)
 	parcelHandler := api.NewParcelHandler(parcelService)
@@ -105,6 +112,7 @@ func main() {
 		courierHandler,
 		authService,
 		redisClient,
+		wsManager,
 	)
 
 	// Создание HTTP-сервера

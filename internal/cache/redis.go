@@ -2,7 +2,7 @@ package cache
 
 import (
 	"context"
-	"delivery/internal/config"
+	"delivery/config"
 	"errors"
 	"fmt"
 	"log"

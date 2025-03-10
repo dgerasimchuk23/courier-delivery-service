@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"context"
+	"delivery/internal/api"
 	"delivery/internal/business/models"
 	"delivery/internal/cache"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 type DeliveryService struct {
 	store       *DeliveryStore
 	cacheClient *cache.RedisClient
+	wsManager   *api.WebSocketManager
 }
 
 func NewDeliveryService(store *DeliveryStore) *DeliveryService {
@@ -20,6 +22,12 @@ func NewDeliveryService(store *DeliveryStore) *DeliveryService {
 // WithCache добавляет клиент кэширования к сервису
 func (s *DeliveryService) WithCache(cacheClient *cache.RedisClient) *DeliveryService {
 	s.cacheClient = cacheClient
+	return s
+}
+
+// WithWebSocket добавляет WebSocket менеджер к сервису
+func (s *DeliveryService) WithWebSocket(wsManager *api.WebSocketManager) *DeliveryService {
+	s.wsManager = wsManager
 	return s
 }
 
@@ -115,6 +123,11 @@ func (s *DeliveryService) Update(id int, delivery *models.Delivery) error {
 		s.cacheClient.SetJSON(ctx, cacheKey, d, 30*time.Minute)
 	}
 
+	// Отправляем уведомление через WebSocket, если менеджер инициализирован
+	if s.wsManager != nil {
+		s.wsManager.BroadcastOrderStatusUpdate(fmt.Sprintf("%d", id), delivery.Status)
+	}
+
 	return nil
 }
 
@@ -144,6 +157,11 @@ func (s *DeliveryService) CompleteDelivery(deliveryID int) error {
 
 		// Сохраняем обновленные данные в кэш
 		s.cacheClient.SetJSON(ctx, cacheKey, delivery, 30*time.Minute)
+	}
+
+	// Отправляем уведомление через WebSocket, если менеджер инициализирован
+	if s.wsManager != nil {
+		s.wsManager.BroadcastOrderStatusUpdate(fmt.Sprintf("%d", deliveryID), "delivered")
 	}
 
 	return s.store.Update(delivery)
@@ -252,10 +270,9 @@ func (s *DeliveryService) AssignDelivery(courierID, parcelID int) (models.Delive
 
 	delivery.ID = id
 
-	// Инвалидируем кэш списка доставок
-	if s.cacheClient != nil {
-		ctx := context.Background()
-		s.cacheClient.Delete(ctx, "deliveries:list")
+	// Отправляем уведомление через WebSocket, если менеджер инициализирован
+	if s.wsManager != nil {
+		s.wsManager.BroadcastOrderStatusUpdate(fmt.Sprintf("%d", id), "assigned")
 	}
 
 	return delivery, nil

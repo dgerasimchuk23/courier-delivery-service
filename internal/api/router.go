@@ -20,6 +20,7 @@ func NewRouter(
 	courierHandler *CourierHandler,
 	authService *auth.AuthService,
 	redisClient *cache.RedisClient,
+	wsManager *WebSocketManager,
 ) *mux.Router {
 
 	r := mux.NewRouter()
@@ -73,6 +74,12 @@ func NewRouter(
 	r.HandleFunc("/couriers/{id}", courierHandler.UpdateCourier).Methods("PUT")
 	r.HandleFunc("/couriers/{id}/status", courierHandler.UpdateCourierStatus).Methods("PUT")
 	r.HandleFunc("/couriers/{id}", courierHandler.DeleteCourier).Methods("DELETE")
+
+	// Добавляем маршрут для WebSocket соединений
+	// Этот маршрут не требует аутентификации, поэтому добавляем его отдельно
+	wsRouter := r.PathPrefix("/ws").Subrouter()
+	wsRouter.Use(rateLimiter.Middleware()) // Применяем только ограничение скорости
+	wsRouter.HandleFunc("/orders", wsManager.WebSocketHandler)
 
 	// Добавляем маршрут для обновления конфигурации Rate Limiting
 	r.HandleFunc("/admin/rate-limit", func(w http.ResponseWriter, r *http.Request) {

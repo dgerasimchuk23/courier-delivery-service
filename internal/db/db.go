@@ -3,7 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
-	"delivery/internal/config"
+	"delivery/config"
 	migrations "delivery/internal/db/migrations"
 	"fmt"
 	"log"
