@@ -1,10 +1,8 @@
 package db
 
 import (
-	"bufio"
 	"database/sql"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -173,12 +171,12 @@ func ReadQueriesFromFile(filePath string) ([]string, error) {
 		return nil, fmt.Errorf("ошибка получения абсолютного пути: %w", err)
 	}
 
+	// Пытаемся прочитать файл с абсолютным путем
 	log.Printf("Пытаемся прочитать файл: %s (абсолютный путь: %s)", filePath, absPath)
-
-	content, err := ioutil.ReadFile(absPath)
+	content, err := os.ReadFile(absPath)
 	if err != nil {
-		// Если не удалось прочитать по абсолютному пути, пробуем относительный
-		content, err = ioutil.ReadFile(filePath)
+		// Если не удалось, пробуем с относительным путем
+		content, err = os.ReadFile(filePath)
 		if err != nil {
 			return nil, fmt.Errorf("ошибка чтения файла: %w", err)
 		}
@@ -206,53 +204,11 @@ func ReadQueriesFromFile(filePath string) ([]string, error) {
 
 // ExtractQueriesFromLogs извлекает SQL-запросы из лог-файлов
 func ExtractQueriesFromLogs(logDir string) ([]string, error) {
-	// Получаем список файлов логов
-	files, err := filepath.Glob(filepath.Join(logDir, "sql_queries_*.log"))
-	if err != nil {
-		return nil, fmt.Errorf("ошибка поиска файлов логов: %w", err)
-	}
+	// Отключаем чтение из логов, чтобы не создавать папку logs
+	log.Println("Чтение из логов отключено")
+	return []string{}, nil
 
-	uniqueQueries := make(map[string]struct{})
-	queryRegex := regexp.MustCompile(`SQL-запрос: (.+)`)
-
-	// Обрабатываем каждый файл логов
-	for _, file := range files {
-		f, err := os.Open(file)
-		if err != nil {
-			log.Printf("Ошибка открытия файла лога %s: %v", file, err)
-			continue
-		}
-		defer f.Close()
-
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := scanner.Text()
-			matches := queryRegex.FindStringSubmatch(line)
-			if len(matches) > 1 {
-				query := strings.TrimSpace(matches[1])
-				// Проверяем, что это SQL-запрос
-				if strings.HasPrefix(strings.ToUpper(query), "SELECT") ||
-					strings.HasPrefix(strings.ToUpper(query), "INSERT") ||
-					strings.HasPrefix(strings.ToUpper(query), "UPDATE") ||
-					strings.HasPrefix(strings.ToUpper(query), "DELETE") {
-					// Добавляем в уникальные запросы
-					uniqueQueries[query] = struct{}{}
-				}
-			}
-		}
-
-		if err := scanner.Err(); err != nil {
-			log.Printf("Ошибка чтения файла лога %s: %v", file, err)
-		}
-	}
-
-	// Преобразуем уникальные запросы в список
-	queries := make([]string, 0, len(uniqueQueries))
-	for query := range uniqueQueries {
-		queries = append(queries, query)
-	}
-
-	return queries, nil
+	// ... existing code ...
 }
 
 // CheckDatabasePerformanceDetailed проверяет производительность ключевых запросов с подробным логированием

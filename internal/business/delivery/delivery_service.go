@@ -6,6 +6,7 @@ import (
 	"delivery/internal/business/models"
 	"delivery/internal/cache"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -50,7 +51,9 @@ func (s *DeliveryService) Create(delivery *models.Delivery) error {
 	// Инвалидируем кэш списка доставок
 	if s.cacheClient != nil {
 		ctx := context.Background()
-		s.cacheClient.Delete(ctx, "deliveries:list")
+		if err := s.cacheClient.Delete(ctx, "deliveries:list"); err != nil {
+			log.Printf("Ошибка при удалении кэша списка доставок: %v", err)
+		}
 	}
 
 	return nil
@@ -88,7 +91,9 @@ func (s *DeliveryService) Get(id int) (*models.Delivery, error) {
 	if s.cacheClient != nil {
 		ctx := context.Background()
 		cacheKey := fmt.Sprintf("delivery:%d", id)
-		s.cacheClient.SetJSON(ctx, cacheKey, result, 30*time.Minute)
+		if err := s.cacheClient.SetJSON(ctx, cacheKey, result, 30*time.Minute); err != nil {
+			log.Printf("Ошибка при сохранении доставки в кэш: %v", err)
+		}
 	}
 
 	return result, nil
@@ -114,13 +119,19 @@ func (s *DeliveryService) Update(id int, delivery *models.Delivery) error {
 		cacheKey := fmt.Sprintf("delivery:%d", id)
 
 		// Удаляем старые данные из кэша
-		s.cacheClient.Delete(ctx, cacheKey)
+		if err := s.cacheClient.Delete(ctx, cacheKey); err != nil {
+			log.Printf("Ошибка при удалении кэша доставки: %v", err)
+		}
 
 		// Инвалидируем кэш списка доставок
-		s.cacheClient.Delete(ctx, "deliveries:list")
+		if err := s.cacheClient.Delete(ctx, "deliveries:list"); err != nil {
+			log.Printf("Ошибка при удалении кэша списка доставок: %v", err)
+		}
 
 		// Сохраняем обновленные данные в кэш
-		s.cacheClient.SetJSON(ctx, cacheKey, d, 30*time.Minute)
+		if err := s.cacheClient.SetJSON(ctx, cacheKey, d, 30*time.Minute); err != nil {
+			log.Printf("Ошибка при сохранении доставки в кэш: %v", err)
+		}
 	}
 
 	// Отправляем уведомление через WebSocket, если менеджер инициализирован
@@ -150,13 +161,19 @@ func (s *DeliveryService) CompleteDelivery(deliveryID int) error {
 		cacheKey := fmt.Sprintf("delivery:%d", deliveryID)
 
 		// Удаляем старые данные из кэша
-		s.cacheClient.Delete(ctx, cacheKey)
+		if err := s.cacheClient.Delete(ctx, cacheKey); err != nil {
+			log.Printf("Ошибка при удалении кэша доставки: %v", err)
+		}
 
 		// Инвалидируем кэш списка доставок
-		s.cacheClient.Delete(ctx, "deliveries:list")
+		if err := s.cacheClient.Delete(ctx, "deliveries:list"); err != nil {
+			log.Printf("Ошибка при удалении кэша списка доставок: %v", err)
+		}
 
 		// Сохраняем обновленные данные в кэш
-		s.cacheClient.SetJSON(ctx, cacheKey, delivery, 30*time.Minute)
+		if err := s.cacheClient.SetJSON(ctx, cacheKey, delivery, 30*time.Minute); err != nil {
+			log.Printf("Ошибка при сохранении доставки в кэш: %v", err)
+		}
 	}
 
 	// Отправляем уведомление через WebSocket, если менеджер инициализирован

@@ -13,6 +13,14 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+// Define test context keys
+type testContextKey string
+
+const (
+	TestUserIDKey   = UserIDKey
+	TestUserRoleKey = UserRoleKey
+)
+
 // MockRedisClient - мок для RedisClientInterface
 type MockRedisClient struct {
 	mock.Mock
@@ -200,10 +208,10 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		// Настраиваем мок для проверки блокировки IP
 		mockRedis.On("Get", mock.Anything, "rate_limit:block:127.0.0.1").Return("", cache.ErrKeyNotFound).Once()
 
-		// Настраиваем мок для получения счетчика запросов
+		// Настраиваем мок для получения счетчика запросов для аутентифицированного пользователя
 		mockRedis.On("Get", mock.Anything, "rate_limit:auth:client:123:count").Return("", cache.ErrKeyNotFound).Once()
 
-		// Настраиваем мок для установки счетчика запросов
+		// Настраиваем мок для установки счетчика запросов для аутентифицированного пользователя
 		mockRedis.On("Set", mock.Anything, "rate_limit:auth:client:123:count", "1", time.Minute).Return(nil).Once()
 
 		// Создаем тестовый запрос с аутентификацией
@@ -247,10 +255,10 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		// Настраиваем мок для проверки блокировки IP
 		mockRedis.On("Get", mock.Anything, "rate_limit:block:127.0.0.1").Return("", cache.ErrKeyNotFound).Once()
 
-		// Настраиваем мок для получения счетчика запросов
+		// Настраиваем мок для получения счетчика запросов для аутентифицированного пользователя
 		mockRedis.On("Get", mock.Anything, "rate_limit:auth:courier:456:count").Return("", cache.ErrKeyNotFound).Once()
 
-		// Настраиваем мок для установки счетчика запросов
+		// Настраиваем мок для установки счетчика запросов для аутентифицированного пользователя
 		mockRedis.On("Set", mock.Anything, "rate_limit:auth:courier:456:count", "1", time.Minute).Return(nil).Once()
 
 		// Создаем тестовый запрос с аутентификацией

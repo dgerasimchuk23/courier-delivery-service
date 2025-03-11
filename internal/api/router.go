@@ -7,6 +7,7 @@ import (
 	"delivery/internal/middleware"
 
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -34,7 +35,9 @@ func NewRouter(
 	if err := rateLimiter.LoadConfigFromRedis(ctx); err != nil {
 		// Если не удалось загрузить конфигурацию, используем значения по умолчанию
 		// и сохраняем их в Redis
-		rateLimiter.SaveConfigToRedis(ctx)
+		if err := rateLimiter.SaveConfigToRedis(ctx); err != nil {
+			log.Printf("Ошибка при сохранении конфигурации Rate Limiting в Redis: %v", err)
+		}
 	}
 
 	// Применяем middleware ко всем маршрутам
@@ -98,7 +101,9 @@ func NewRouter(
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+			log.Printf("Ошибка при кодировании ответа: %v", err)
+		}
 	}).Methods("POST")
 
 	return r

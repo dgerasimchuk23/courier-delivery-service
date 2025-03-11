@@ -3,6 +3,7 @@ package api
 import (
 	"delivery/internal/business/models"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -41,14 +42,16 @@ func (h *CourierHandler) CreateCourier(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(courier)
+	if err := json.NewEncoder(w).Encode(courier); err != nil {
+		log.Printf("Ошибка при кодировании ответа: %v", err)
+	}
 }
 
 func (h *CourierHandler) GetCourier(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	idStr, ok := vars["id"]
 	if !ok || idStr == "" {
-		writeError(w, "Missing courier ID", http.StatusBadRequest)
+		writeError(w, "Invalid courier ID", http.StatusBadRequest)
 		return
 	}
 
@@ -65,7 +68,9 @@ func (h *CourierHandler) GetCourier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(courier)
+	if err := json.NewEncoder(w).Encode(courier); err != nil {
+		log.Printf("Ошибка при кодировании ответа: %v", err)
+	}
 }
 
 func (h *CourierHandler) UpdateCourier(w http.ResponseWriter, r *http.Request) {
@@ -109,12 +114,15 @@ func (h *CourierHandler) DeleteCourier(w http.ResponseWriter, r *http.Request) {
 func (h *CourierHandler) ListCouriers(w http.ResponseWriter, r *http.Request) {
 	couriers, err := h.service.List()
 	if err != nil {
-		writeError(w, "Failed to fetch couriers", http.StatusInternalServerError)
+		writeError(w, "Failed to get couriers", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(couriers)
+	if err := json.NewEncoder(w).Encode(couriers); err != nil {
+		writeError(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (h *CourierHandler) GetAvailableCouriers(w http.ResponseWriter, r *http.Request) {

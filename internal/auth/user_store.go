@@ -99,7 +99,9 @@ func (s *UserStore) SaveRefreshToken(token models.RefreshToken) error {
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback()
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				log.Printf("Ошибка при откате транзакции: %v", rollbackErr)
+			}
 		}
 	}()
 

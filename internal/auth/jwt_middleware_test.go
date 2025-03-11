@@ -20,7 +20,7 @@ func TestJWTMiddleware(t *testing.T) {
 	// Создаем тестовый обработчик
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Проверяем, что userID добавлен в контекст
-		userID := r.Context().Value("userID")
+		userID := r.Context().Value(UserIDContextKey)
 		if userID == nil {
 			t.Error("userID not found in context")
 		}
