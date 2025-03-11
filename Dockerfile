@@ -2,7 +2,7 @@
 FROM golang:1.24.0 AS builder
 
 # Устанавливаем рабочую директорию
-WORKDIR /delivery
+WORKDIR /app
 
 # Копируем файлы go.mod и go.sum и загружаем зависимости
 COPY go.mod go.sum ./
@@ -15,23 +15,16 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o delivery main.go
 
 # Используем минимальный образ для запуска собранного приложения
-FROM alpine:latest
-
-# Устанавливаем необходимые пакеты
-RUN apk add --no-cache libc6-compat
+FROM golang:1.23.0
 
 # Устанавливаем рабочую директорию
-WORKDIR /root/
+WORKDIR /app
 
-# Создаём необходимые папки
-RUN mkdir -p /root/config
+# Копируем приложение и все исходные файлы
+COPY --from=builder /app .
 
 # Устанавливаем переменную окружения для определения, что приложение запущено в контейнере
 ENV IN_CONTAINER=true
 
-# Копируем приложение и конфиги из предыдущего этапа сборки
-COPY --from=builder /delivery/delivery .
-COPY ./config ./config
-
-# Запуск приложения
+# По умолчанию запускаем приложение
 CMD ["./delivery"]
