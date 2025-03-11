@@ -47,13 +47,21 @@ func (r *RedisClient) MonitorStats(ctx context.Context) (*RedisStats, error) {
 	lines := strings.Split(info, "\r\n")
 	for _, line := range lines {
 		if strings.HasPrefix(line, "expired_keys:") {
-			fmt.Sscanf(line, "expired_keys:%d", &stats.ExpiredKeys)
+			if _, err := fmt.Sscanf(line, "expired_keys:%d", &stats.ExpiredKeys); err != nil {
+				log.Printf("Ошибка при парсинге expired_keys: %v", err)
+			}
 		} else if strings.HasPrefix(line, "evicted_keys:") {
-			fmt.Sscanf(line, "evicted_keys:%d", &stats.EvictedKeys)
+			if _, err := fmt.Sscanf(line, "evicted_keys:%d", &stats.EvictedKeys); err != nil {
+				log.Printf("Ошибка при парсинге evicted_keys: %v", err)
+			}
 		} else if strings.HasPrefix(line, "used_memory:") {
-			fmt.Sscanf(line, "used_memory:%d", &stats.UsedMemory)
+			if _, err := fmt.Sscanf(line, "used_memory:%d", &stats.UsedMemory); err != nil {
+				log.Printf("Ошибка при парсинге used_memory: %v", err)
+			}
 		} else if strings.HasPrefix(line, "used_memory_peak:") {
-			fmt.Sscanf(line, "used_memory_peak:%d", &stats.UsedMemoryPeak)
+			if _, err := fmt.Sscanf(line, "used_memory_peak:%d", &stats.UsedMemoryPeak); err != nil {
+				log.Printf("Ошибка при парсинге used_memory_peak: %v", err)
+			}
 		}
 	}
 

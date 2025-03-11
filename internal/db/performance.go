@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"database/sql"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -173,12 +172,12 @@ func ReadQueriesFromFile(filePath string) ([]string, error) {
 		return nil, fmt.Errorf("ошибка получения абсолютного пути: %w", err)
 	}
 
+	// Пытаемся прочитать файл с абсолютным путем
 	log.Printf("Пытаемся прочитать файл: %s (абсолютный путь: %s)", filePath, absPath)
-
-	content, err := ioutil.ReadFile(absPath)
+	content, err := os.ReadFile(absPath)
 	if err != nil {
-		// Если не удалось прочитать по абсолютному пути, пробуем относительный
-		content, err = ioutil.ReadFile(filePath)
+		// Если не удалось, пробуем с относительным путем
+		content, err = os.ReadFile(filePath)
 		if err != nil {
 			return nil, fmt.Errorf("ошибка чтения файла: %w", err)
 		}

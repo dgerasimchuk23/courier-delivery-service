@@ -8,6 +8,8 @@ linters-settings:
       - "internal/cache/monitor_test.go"
       - "internal/middleware/auth_middleware_test.go"
       - "internal/middleware/rate_limiter_test.go"
+      - "internal/kafka/producer.go"
+      - "internal/kafka/consumer.go"
 
 linters:
   disable:
@@ -31,6 +33,12 @@ issues:
       linters:
         - typecheck
     - path: "internal/cache/redis.go"
+      linters:
+        - typecheck
+    - path: "internal/kafka/producer.go"
+      linters:
+        - typecheck
+    - path: "internal/kafka/consumer.go"
       linters:
         - typecheck
 

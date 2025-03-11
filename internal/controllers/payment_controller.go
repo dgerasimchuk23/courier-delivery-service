@@ -45,7 +45,10 @@ func (pc *PaymentController) CreatePayment(w http.ResponseWriter, r *http.Reques
 	// Отправляем ответ
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Ошибка кодирования ответа: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 // GetPayment обрабатывает запрос на получение информации о платеже
@@ -73,7 +76,10 @@ func (pc *PaymentController) GetPayment(w http.ResponseWriter, r *http.Request) 
 
 	// Отправляем ответ
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Ошибка кодирования ответа: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 // CancelPayment обрабатывает запрос на отмену платежа
@@ -101,7 +107,10 @@ func (pc *PaymentController) CancelPayment(w http.ResponseWriter, r *http.Reques
 
 	// Отправляем ответ
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Ошибка кодирования ответа: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 // RefundPayment обрабатывает запрос на возврат платежа
@@ -138,7 +147,10 @@ func (pc *PaymentController) RefundPayment(w http.ResponseWriter, r *http.Reques
 
 	// Отправляем ответ
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Ошибка кодирования ответа: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 // HandlePayment обрабатывает все запросы, связанные с платежами

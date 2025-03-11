@@ -9,6 +9,15 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// Определяем типы для ключей контекста
+type contextKey string
+
+const (
+	UserIDKey   contextKey = "user_id"
+	UserRoleKey contextKey = "user_role"
+	TokenKey    contextKey = "token"
+)
+
 // AuthMiddleware представляет middleware для аутентификации
 type AuthMiddleware struct {
 	authService auth.AuthServiceInterface
@@ -58,9 +67,9 @@ func (am *AuthMiddleware) Middleware() mux.MiddlewareFunc {
 			role := "client" // По умолчанию считаем, что пользователь - клиент
 
 			// Добавляем информацию о пользователе в контекст
-			ctx := context.WithValue(r.Context(), "user_id", userID)
-			ctx = context.WithValue(ctx, "user_role", role)
-			ctx = context.WithValue(ctx, "token", tokenString)
+			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			ctx = context.WithValue(ctx, UserRoleKey, role)
+			ctx = context.WithValue(ctx, TokenKey, tokenString)
 
 			// Передаем запрос дальше с обновленным контекстом
 			next.ServeHTTP(w, r.WithContext(ctx))

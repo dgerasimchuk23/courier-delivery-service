@@ -101,7 +101,9 @@ func CleanupDuplicateTokensWithTimeout(db *sql.DB, keepLatest int, timeout time.
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback()
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				log.Printf("Ошибка при откате транзакции: %v", rollbackErr)
+			}
 		}
 	}()
 
