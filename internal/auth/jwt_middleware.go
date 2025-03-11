@@ -9,6 +9,14 @@ import (
 	"strings"
 )
 
+// contextKey is a custom type for context keys to avoid collisions
+type contextKey string
+
+// Define context keys
+const (
+	UserIDContextKey contextKey = "userID"
+)
+
 // JWTMiddleware представляет middleware для проверки JWT токенов
 type JWTMiddleware struct {
 	authService *AuthService
@@ -62,7 +70,7 @@ func (m *JWTMiddleware) Middleware(next http.Handler) http.Handler {
 		}
 
 		// Добавляем userID в контекст запроса
-		ctx := context.WithValue(r.Context(), "userID", userID)
+		ctx := context.WithValue(r.Context(), UserIDContextKey, userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

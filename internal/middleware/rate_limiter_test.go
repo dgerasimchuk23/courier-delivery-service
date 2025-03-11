@@ -13,6 +13,14 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+// Define test context keys
+type testContextKey string
+
+const (
+	TestUserIDKey   testContextKey = "user_id"
+	TestUserRoleKey testContextKey = "user_role"
+)
+
 // MockRedisClient - мок для RedisClientInterface
 type MockRedisClient struct {
 	mock.Mock
@@ -212,8 +220,8 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		req.RemoteAddr = "127.0.0.1:1234"
 
 		// Добавляем информацию о пользователе в контекст
-		ctx := context.WithValue(req.Context(), "user_id", 123)
-		ctx = context.WithValue(ctx, "user_role", "client")
+		ctx := context.WithValue(req.Context(), TestUserIDKey, 123)
+		ctx = context.WithValue(ctx, TestUserRoleKey, "client")
 		req = req.WithContext(ctx)
 
 		// Создаем ResponseRecorder для записи ответа
@@ -259,8 +267,8 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		req.RemoteAddr = "127.0.0.1:1234"
 
 		// Добавляем информацию о пользователе в контекст
-		ctx := context.WithValue(req.Context(), "user_id", 456)
-		ctx = context.WithValue(ctx, "user_role", "courier")
+		ctx := context.WithValue(req.Context(), TestUserIDKey, 456)
+		ctx = context.WithValue(ctx, TestUserRoleKey, "courier")
 		req = req.WithContext(ctx)
 
 		// Создаем ResponseRecorder для записи ответа

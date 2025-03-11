@@ -1,48 +1,26 @@
-linters-settings:
-  typecheck:
-    # Отключаем проверку типов для файлов, где используются внешние пакеты
-    exclude:
-      - "internal/auth/auth_service.go"
-      - "internal/auth/auth_service_test.go"
-      - "internal/cache/redis.go"
-      - "internal/cache/monitor_test.go"
-      - "internal/middleware/auth_middleware_test.go"
-      - "internal/middleware/rate_limiter_test.go"
-      - "internal/kafka/producer.go"
-      - "internal/kafka/consumer.go"
+run:
+  timeout: 5m  # Максимальное время выполнения линтера
+  tests: true  # Проверять тестовые файлы
 
 linters:
-  disable:
-    - typecheck  # Отключаем проверку типов
-    - unused     # Отключаем проверку неиспользуемых переменных
-    - deadcode   # Отключаем проверку мертвого кода
-    - structcheck # Отключаем проверку неиспользуемых полей структур
-    - varcheck    # Отключаем проверку неиспользуемых глобальных переменных
+  disable-all: true  # Отключаем все линтеры по умолчанию
+  enable:
+    - gosimple      # Упрощение кода
+    - govet         # Проверка подозрительных конструкций
+    - ineffassign   # Обнаружение неэффективных присваиваний
+    - staticcheck   # Статический анализ кода
+    - typecheck     # Проверка типов как в компиляторе Go
+    - gofmt         # Проверка форматирования кода
+    - goimports     # Проверка импортов
+    - misspell      # Проверка орфографии
 
 issues:
+  exclude-dirs:
+    - vendor  # Исключаем директорию vendor из проверки
   exclude-rules:
-    # Исключаем ошибки для тестовых файлов
-    - path: "_test\\.go"
+    - path: _test\.go  # Для тестовых файлов
       linters:
-        - typecheck
-        - unused
-        - deadcode
-    
-    # Исключаем ошибки для файлов, использующих внешние пакеты
-    - path: "internal/auth/auth_service.go"
-      linters:
-        - typecheck
-    - path: "internal/cache/redis.go"
-      linters:
-        - typecheck
-    - path: "internal/kafka/producer.go"
-      linters:
-        - typecheck
-    - path: "internal/kafka/consumer.go"
-      linters:
-        - typecheck
-
-run:
-  # Пропускаем тестовые файлы при проверке
-  skip-files:
-    - ".*_test\\.go$" 
+        - errcheck  # Отключаем проверку необработанных ошибок в тестах
+        - gosec     # Отключаем проверку безопасности в тестах
+  max-issues-per-linter: 0  # Без ограничения на количество проблем от одного линтера
+  max-same-issues: 0  # Без ограничения на количество одинаковых проблем 

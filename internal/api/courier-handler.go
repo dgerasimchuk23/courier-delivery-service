@@ -120,7 +120,8 @@ func (h *CourierHandler) ListCouriers(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(couriers); err != nil {
-		log.Printf("Ошибка при кодировании ответа: %v", err)
+		writeError(w, "Failed to encode response", http.StatusInternalServerError)
+		return
 	}
 }
 

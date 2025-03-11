@@ -10,11 +10,14 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Определяем строковые константы для ключей контекста
+// contextKey is a custom type for context keys to avoid collisions
+type contextKey string
+
+// Определяем константы для ключей контекста
 const (
-	UserIDKey   = "user_id"
-	UserRoleKey = "user_role"
-	TokenKey    = "token"
+	UserIDKey   contextKey = "user_id"
+	UserRoleKey contextKey = "user_role"
+	TokenKey    contextKey = "token"
 )
 
 // AuthMiddleware представляет middleware для аутентификации
