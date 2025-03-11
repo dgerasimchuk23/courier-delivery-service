@@ -113,13 +113,13 @@ func getClientIP(r *http.Request) string {
 
 // getUserID получает ID пользователя из контекста запроса
 func getUserID(r *http.Request) (int, bool) {
-	userID, ok := r.Context().Value("user_id").(int)
+	userID, ok := r.Context().Value(UserIDKey).(int)
 	return userID, ok
 }
 
 // getUserRole получает роль пользователя из контекста запроса
 func getUserRole(r *http.Request) (string, bool) {
-	role, ok := r.Context().Value("user_role").(string)
+	role, ok := r.Context().Value(UserRoleKey).(string)
 	return role, ok
 }
 

@@ -73,7 +73,7 @@ func TestAuthMiddleware_Middleware(t *testing.T) {
 		// Создаем тестовый обработчик
 		testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Проверяем, что информация о пользователе добавлена в контекст
-			userID, ok := r.Context().Value("user_id").(int)
+			userID, ok := r.Context().Value(UserIDKey).(int)
 			if ok {
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("User ID: " + strconv.Itoa(userID)))
@@ -121,7 +121,7 @@ func TestAuthMiddleware_Middleware(t *testing.T) {
 		// Создаем тестовый обработчик
 		testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Проверяем, что информация о пользователе добавлена в контекст
-			userID, ok := r.Context().Value("user_id").(int)
+			userID, ok := r.Context().Value(UserIDKey).(int)
 			if ok {
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("User ID: " + strconv.Itoa(userID)))
@@ -174,7 +174,7 @@ func TestAuthMiddleware_Middleware(t *testing.T) {
 		// Создаем тестовый обработчик
 		testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Проверяем, что информация о пользователе добавлена в контекст
-			userID, ok := r.Context().Value("user_id").(int)
+			userID, ok := r.Context().Value(UserIDKey).(int)
 			if ok {
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("User ID: " + strconv.Itoa(userID)))
@@ -287,7 +287,7 @@ func TestAuthMiddleware_WithRedis(t *testing.T) {
 		// Создаем тестовый обработчик
 		testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Проверяем, что информация о пользователе добавлена в контекст
-			userID, ok := r.Context().Value("user_id").(int)
+			userID, ok := r.Context().Value(UserIDKey).(int)
 			if ok {
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("User ID: " + strconv.Itoa(userID)))

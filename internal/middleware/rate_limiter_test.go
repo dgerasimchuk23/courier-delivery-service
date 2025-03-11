@@ -17,8 +17,8 @@ import (
 type testContextKey string
 
 const (
-	TestUserIDKey   testContextKey = "user_id"
-	TestUserRoleKey testContextKey = "user_role"
+	TestUserIDKey   = UserIDKey
+	TestUserRoleKey = UserRoleKey
 )
 
 // MockRedisClient - мок для RedisClientInterface
