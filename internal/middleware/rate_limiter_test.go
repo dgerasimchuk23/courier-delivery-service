@@ -208,10 +208,10 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		// Настраиваем мок для проверки блокировки IP
 		mockRedis.On("Get", mock.Anything, "rate_limit:block:127.0.0.1").Return("", cache.ErrKeyNotFound).Once()
 
-		// Настраиваем мок для получения счетчика запросов
+		// Настраиваем мок для получения счетчика запросов для аутентифицированного пользователя
 		mockRedis.On("Get", mock.Anything, "rate_limit:auth:client:123:count").Return("", cache.ErrKeyNotFound).Once()
 
-		// Настраиваем мок для установки счетчика запросов
+		// Настраиваем мок для установки счетчика запросов для аутентифицированного пользователя
 		mockRedis.On("Set", mock.Anything, "rate_limit:auth:client:123:count", "1", time.Minute).Return(nil).Once()
 
 		// Создаем тестовый запрос с аутентификацией
@@ -220,8 +220,8 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		req.RemoteAddr = "127.0.0.1:1234"
 
 		// Добавляем информацию о пользователе в контекст
-		ctx := context.WithValue(req.Context(), TestUserIDKey, 123)
-		ctx = context.WithValue(ctx, TestUserRoleKey, "client")
+		ctx := context.WithValue(req.Context(), "user_id", 123)
+		ctx = context.WithValue(ctx, "user_role", "client")
 		req = req.WithContext(ctx)
 
 		// Создаем ResponseRecorder для записи ответа
@@ -255,10 +255,10 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		// Настраиваем мок для проверки блокировки IP
 		mockRedis.On("Get", mock.Anything, "rate_limit:block:127.0.0.1").Return("", cache.ErrKeyNotFound).Once()
 
-		// Настраиваем мок для получения счетчика запросов
+		// Настраиваем мок для получения счетчика запросов для аутентифицированного пользователя
 		mockRedis.On("Get", mock.Anything, "rate_limit:auth:courier:456:count").Return("", cache.ErrKeyNotFound).Once()
 
-		// Настраиваем мок для установки счетчика запросов
+		// Настраиваем мок для установки счетчика запросов для аутентифицированного пользователя
 		mockRedis.On("Set", mock.Anything, "rate_limit:auth:courier:456:count", "1", time.Minute).Return(nil).Once()
 
 		// Создаем тестовый запрос с аутентификацией
@@ -267,8 +267,8 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		req.RemoteAddr = "127.0.0.1:1234"
 
 		// Добавляем информацию о пользователе в контекст
-		ctx := context.WithValue(req.Context(), TestUserIDKey, 456)
-		ctx = context.WithValue(ctx, TestUserRoleKey, "courier")
+		ctx := context.WithValue(req.Context(), "user_id", 456)
+		ctx = context.WithValue(ctx, "user_role", "courier")
 		req = req.WithContext(ctx)
 
 		// Создаем ResponseRecorder для записи ответа

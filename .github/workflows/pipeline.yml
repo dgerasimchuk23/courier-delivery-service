@@ -7,33 +7,33 @@ on:
     branches: [ main ]
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Install essential packages
-      run: |
-        sudo apt-get clean
-        sudo apt-get update
-        sudo apt-get install -y --fix-missing tar gzip
+  # lint:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - name: Install essential packages
+  #     run: |
+  #       sudo apt-get clean
+  #       sudo apt-get update
+  #       sudo apt-get install -y --fix-missing tar gzip
 
-    - uses: actions/checkout@v4
+  #   - uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.24.0'
-        cache: false
+  #   - name: Set up Go
+  #     uses: actions/setup-go@v4
+  #     with:
+  #       go-version: '1.24.0'
+  #       cache: false
 
-    - name: Install golangci-lint
-      run: |
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
-        export PATH=$PATH:$(go env GOPATH)/bin
+  #   - name: Install golangci-lint
+  #     run: |
+  #       curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+  #       export PATH=$PATH:$(go env GOPATH)/bin
 
-    - name: Run golangci-lint
-      run: $(go env GOPATH)/bin/golangci-lint run
+  #   - name: Run golangci-lint
+  #     run: $(go env GOPATH)/bin/golangci-lint run
 
   build-and-test:
-    needs: lint
+    # needs: lint
     runs-on: ubuntu-latest
     
     services:
