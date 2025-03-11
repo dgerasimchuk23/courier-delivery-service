@@ -109,17 +109,33 @@ func CloseQueryLogging() {
 	}
 }
 
-// DB представляет обертку над sql.DB с логированием запросов
+// DB представляет обертку над sql.DB с дополнительной функциональностью
 type DB struct {
 	*sql.DB
 }
 
-// NewDB создает новую обертку над sql.DB
+// NewDB создает новый экземпляр DB
 func NewDB(db *sql.DB) *DB {
 	return &DB{DB: db}
 }
 
-// Query выполняет запрос с логированием
+// Close закрывает соединение с базой данных
+func (db *DB) Close() error {
+	if db.DB != nil {
+		return db.DB.Close()
+	}
+	return nil
+}
+
+// Ping проверяет соединение с базой данных
+func (db *DB) Ping() error {
+	if db.DB != nil {
+		return db.DB.Ping()
+	}
+	return fmt.Errorf("database connection is nil")
+}
+
+// Query выполняет SQL запрос и возвращает строки результата
 func (db *DB) Query(query string, args ...interface{}) (*sql.Rows, error) {
 	LogQuery(query, args...)
 	return db.DB.Query(query, args...)
