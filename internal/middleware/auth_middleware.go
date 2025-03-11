@@ -3,24 +3,24 @@ package middleware
 import (
 	"context"
 	"delivery/internal/auth"
+	"delivery/internal/cache"
 	"net/http"
 	"strings"
 
 	"github.com/gorilla/mux"
 )
 
-// Определяем типы для ключей контекста
-type contextKey string
-
+// Определяем строковые константы для ключей контекста
 const (
-	UserIDKey   contextKey = "user_id"
-	UserRoleKey contextKey = "user_role"
-	TokenKey    contextKey = "token"
+	UserIDKey   = "user_id"
+	UserRoleKey = "user_role"
+	TokenKey    = "token"
 )
 
 // AuthMiddleware представляет middleware для аутентификации
 type AuthMiddleware struct {
 	authService auth.AuthServiceInterface
+	redisClient *cache.RedisClient
 }
 
 // NewAuthMiddleware создает новый экземпляр AuthMiddleware
@@ -28,6 +28,12 @@ func NewAuthMiddleware(authService auth.AuthServiceInterface) *AuthMiddleware {
 	return &AuthMiddleware{
 		authService: authService,
 	}
+}
+
+// WithRedis добавляет Redis клиент к middleware
+func (am *AuthMiddleware) WithRedis(redisClient *cache.RedisClient) *AuthMiddleware {
+	am.redisClient = redisClient
+	return am
 }
 
 // Middleware возвращает middleware для аутентификации
