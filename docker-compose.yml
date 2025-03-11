@@ -28,33 +28,6 @@ services:
         condition: service_healthy
 
   test:
-    build: .
-    container_name: delivery_test
-    environment:
-      - DB_TYPE=postgres
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_NAME=delivery_test
-      - DB_SSLMODE=disable
-      - REDIS_HOST=redis
-      - REDIS_PORT=6380
-      - REDIS_PASSWORD=
-      - REDIS_DB=1
-      - KAFKA_BROKER=kafka:9092
-    volumes:
-      - .:/app
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-    command: go test ./... -v
-
-  test:
     build:
       context: .
       dockerfile: Dockerfile.test
