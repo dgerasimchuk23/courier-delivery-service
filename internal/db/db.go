@@ -109,17 +109,33 @@ func CloseQueryLogging() {
 	}
 }
 
-// DB представляет обертку над sql.DB с логированием запросов
+// DB представляет обертку над sql.DB с дополнительной функциональностью
 type DB struct {
 	*sql.DB
 }
 
-// NewDB создает новую обертку над sql.DB
+// NewDB создает новый экземпляр DB
 func NewDB(db *sql.DB) *DB {
 	return &DB{DB: db}
 }
 
-// Query выполняет запрос с логированием
+// Close закрывает соединение с базой данных
+func (db *DB) Close() error {
+	if db.DB != nil {
+		return db.DB.Close()
+	}
+	return nil
+}
+
+// Ping проверяет соединение с базой данных
+func (db *DB) Ping() error {
+	if db.DB != nil {
+		return db.DB.Ping()
+	}
+	return fmt.Errorf("database connection is nil")
+}
+
+// Query выполняет SQL запрос и возвращает строки результата
 func (db *DB) Query(query string, args ...interface{}) (*sql.Rows, error) {
 	LogQuery(query, args...)
 	return db.DB.Query(query, args...)
@@ -229,16 +245,6 @@ func InitDB(config *config.Config) *DB {
 		log.Fatalf("Ошибка при создании базы данных PostgreSQL: %v", err)
 	}
 
-	// Инициализируем логирование запросов
-	if err := InitQueryLogging("logs/sql_queries"); err != nil {
-		log.Printf("Предупреждение: не удалось инициализировать логирование запросов: %v", err)
-	}
-
-	// Инициализируем мониторинг производительности
-	if err := InitPerformanceMonitoring("logs/db_performance"); err != nil {
-		log.Printf("Предупреждение: не удалось инициализировать мониторинг производительности: %v", err)
-	}
-
 	// Подключение к PostgreSQL с ретраями
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		config.Database.Host, config.Database.Port, config.Database.User,
@@ -322,12 +328,6 @@ func CloseDB(db *DB) {
 			performanceAnalysisDone <- true
 			close(performanceAnalysisDone)
 		}
-
-		// Закрываем мониторинг производительности
-		ClosePerformanceMonitoring()
-
-		// Закрываем логирование запросов
-		CloseQueryLogging()
 
 		// Закрываем соединение с БД
 		if err := db.Close(); err != nil {
