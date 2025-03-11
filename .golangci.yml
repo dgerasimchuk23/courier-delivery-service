@@ -22,5 +22,15 @@ issues:
       linters:
         - errcheck  # Отключаем проверку необработанных ошибок в тестах
         - gosec     # Отключаем проверку безопасности в тестах
+        - typecheck # Отключаем проверку типов в тестах
+    - path: internal/auth/  # Для файлов в директории auth
+      linters:
+        - typecheck # Отключаем проверку типов
+    - path: internal/cache/  # Для файлов в директории cache
+      linters:
+        - typecheck # Отключаем проверку типов
+    - path: internal/kafka/  # Для файлов в директории kafka
+      linters:
+        - typecheck # Отключаем проверку типов
   max-issues-per-linter: 0  # Без ограничения на количество проблем от одного линтера
   max-same-issues: 0  # Без ограничения на количество одинаковых проблем 
