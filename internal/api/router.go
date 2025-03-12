@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Маршрутизатор с зарегистрированными маршрутами
@@ -41,6 +42,7 @@ func NewRouter(
 	}
 
 	// Применяем middleware ко всем маршрутам
+	r.Use(middleware.MetricsMiddleware)
 	r.Use(authMiddleware.Middleware())
 	r.Use(rateLimiter.Middleware())
 
@@ -105,6 +107,11 @@ func NewRouter(
 			log.Printf("Ошибка при кодировании ответа: %v", err)
 		}
 	}).Methods("POST")
+
+	// Добавляем эндпоинт для метрик Prometheus
+	// Этот эндпоинт не требует аутентификации
+	metricsRouter := r.PathPrefix("/metrics").Subrouter()
+	metricsRouter.Handle("", promhttp.Handler())
 
 	return r
 }

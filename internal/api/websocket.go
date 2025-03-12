@@ -94,6 +94,13 @@ func (manager *WebSocketManager) WebSocketHandler(w http.ResponseWriter, r *http
 	}()
 }
 
+// GetActiveConnectionsCount возвращает количество активных WebSocket соединений
+func (manager *WebSocketManager) GetActiveConnectionsCount() int {
+	manager.clientsMu.RLock()
+	defer manager.clientsMu.RUnlock()
+	return len(manager.clients)
+}
+
 // Структура для сообщения об обновлении статуса заказа
 type OrderStatusUpdate struct {
 	Type      string `json:"type"`
