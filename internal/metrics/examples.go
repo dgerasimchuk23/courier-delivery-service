@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"strconv"
 	"time"
 )
 
@@ -21,7 +22,7 @@ func TrackHTTPRequest(method, endpoint string, f func() (int, error)) (int, erro
 	status, err := f()
 	duration := time.Since(start).Seconds()
 	HTTPRequestDuration.WithLabelValues(method, endpoint).Observe(duration)
-	HTTPRequestsTotal.WithLabelValues(method, endpoint, string(status)).Inc()
+	HTTPRequestsTotal.WithLabelValues(method, endpoint, strconv.Itoa(status)).Inc()
 	return status, err
 }
 
