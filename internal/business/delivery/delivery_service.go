@@ -5,6 +5,7 @@ import (
 	"delivery/internal/api"
 	"delivery/internal/business/models"
 	"delivery/internal/cache"
+	"delivery/internal/metrics"
 	"fmt"
 	"log"
 	"time"
@@ -48,6 +49,9 @@ func (s *DeliveryService) Create(delivery *models.Delivery) error {
 	delivery.ID = id
 	delivery.AssignedAt = d.AssignedAt
 
+	// Увеличиваем счетчик созданных доставок
+	metrics.DeliveryCreatedTotal.Inc()
+
 	// Инвалидируем кэш списка доставок
 	if s.cacheClient != nil {
 		ctx := context.Background()
@@ -60,6 +64,8 @@ func (s *DeliveryService) Create(delivery *models.Delivery) error {
 }
 
 func (s *DeliveryService) Get(id int) (*models.Delivery, error) {
+	start := time.Now()
+
 	// Если кэширование включено, пытаемся получить из кэша
 	if s.cacheClient != nil {
 		ctx := context.Background()
@@ -68,8 +74,13 @@ func (s *DeliveryService) Get(id int) (*models.Delivery, error) {
 		var delivery models.Delivery
 		err := s.cacheClient.GetJSON(ctx, cacheKey, &delivery)
 		if err == nil {
+			// Увеличиваем счетчик попаданий в кэш
+			metrics.CacheHitTotal.Inc()
 			return &delivery, nil
 		}
+
+		// Увеличиваем счетчик промахов кэша
+		metrics.CacheMissTotal.Inc()
 	}
 
 	// Получаем из БД
@@ -77,6 +88,9 @@ func (s *DeliveryService) Get(id int) (*models.Delivery, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Ошибка при получении доставки: %w", err)
 	}
+
+	// Записываем метрику времени выполнения запроса к БД
+	metrics.DatabaseQueryDuration.WithLabelValues("get_delivery").Observe(time.Since(start).Seconds())
 
 	result := &models.Delivery{
 		ID:          delivery.ID,
@@ -113,6 +127,9 @@ func (s *DeliveryService) Update(id int, delivery *models.Delivery) error {
 		return fmt.Errorf("Ошибка при обновлении доставки: %w", err)
 	}
 
+	// Увеличиваем счетчик обновлений статуса доставок
+	metrics.DeliveryStatusUpdatedTotal.WithLabelValues(delivery.Status).Inc()
+
 	// Обновляем кэш
 	if s.cacheClient != nil {
 		ctx := context.Background()
@@ -137,6 +154,9 @@ func (s *DeliveryService) Update(id int, delivery *models.Delivery) error {
 	// Отправляем уведомление через WebSocket, если менеджер инициализирован
 	if s.wsManager != nil {
 		s.wsManager.BroadcastOrderStatusUpdate(fmt.Sprintf("%d", id), delivery.Status)
+
+		// Увеличиваем счетчик активных WebSocket соединений
+		metrics.ActiveConnections.Set(float64(s.wsManager.GetActiveConnectionsCount()))
 	}
 
 	return nil
@@ -154,6 +174,9 @@ func (s *DeliveryService) CompleteDelivery(deliveryID int) error {
 
 	delivery.Status = "delivered"
 	delivery.DeliveredAt = time.Now().UTC()
+
+	// Увеличиваем счетчик обновлений статуса доставок
+	metrics.DeliveryStatusUpdatedTotal.WithLabelValues("delivered").Inc()
 
 	// Обновляем кэш
 	if s.cacheClient != nil {

@@ -2,6 +2,7 @@ package parcel
 
 import (
 	"delivery/internal/business/models"
+	"delivery/internal/metrics"
 	"fmt"
 	"time"
 )
@@ -28,6 +29,10 @@ func (s *ParcelService) Register(parcel *models.Parcel) error {
 	}
 
 	parcel.ID = id
+
+	// Увеличиваем счетчик созданных посылок
+	metrics.ParcelCreatedTotal.Inc()
+
 	return nil
 }
 
@@ -79,7 +84,12 @@ func (s *ParcelService) Update(id int, parcel *models.Parcel) error {
 }
 
 func (s *ParcelService) UpdateStatus(id int, status string) error {
-	return s.store.SetStatus(id, status)
+	err := s.store.SetStatus(id, status)
+	if err == nil {
+		// Увеличиваем счетчик обновлений статуса посылок
+		metrics.ParcelStatusUpdatedTotal.WithLabelValues(status).Inc()
+	}
+	return err
 }
 
 func (s *ParcelService) UpdateAddress(id int, address string) error {
